@@ -136,6 +136,7 @@ _CONSENT_JS = r"""
 
 _STRONG_CONTAINER_SELECTORS = [
     '[class*="onetrust"]', '[id*="onetrust"]',
+    '[class*="ot-sdk"]', '[id*="ot-sdk"]',
     '[class*="consent"]', '[id*="consent"]',
     '[class*="cmp"]', '[id*="cmp"]',
     '[class*="didomi"]', '[id*="didomi"]',

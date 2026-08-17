@@ -332,6 +332,8 @@ class Pipeline:
         self._last_result = result
         raw_html = getattr(result, "html", "") or ""
         setattr(record, "_raw_html", raw_html)
+        if self.cfg.raw_html:
+            record.rawHtml = raw_html
 
         # fail-closed anti-bot detection
         reason = protection.detect(result)

@@ -28,6 +28,14 @@ _PHONE_RE = re.compile(r"(?:\+?\d{1,3}[ -]?)?(?:\(\d{2,4}\)|\d{2,4})[ -]?\d{3,4}
 
 
 def classify(soup: BeautifulSoup) -> str:
+    # Profile signals first: a single-entity page (vendor profile, product
+    # page) can still contain >=4 <li>/<article> from an unrelated nav,
+    # header account menu, or photo carousel — those must not force a
+    # "listing" classification over a real single-entity page. Verified live:
+    # a real vendor profile (bodas.net) has a header login/register list +
+    # a photo-carousel <li> set that alone clear the listing threshold.
+    if soup.select_one("dt") or soup.select_one("[itemprop='name']") or soup.select_one("address"):
+        return "profile"
     best_selector, best_count = None, 0
     for _name, selector in _LISTING_SELECTORS:
         count = len(soup.select(selector))
@@ -35,9 +43,6 @@ def classify(soup: BeautifulSoup) -> str:
             best_selector, best_count = selector, count
     if best_count >= 4:
         return "listing"
-    # profile: single entity signals
-    if soup.select_one("dt") or soup.select_one("[itemprop='name']") or soup.select_one("address"):
-        return "profile"
     return "generic"
 
 

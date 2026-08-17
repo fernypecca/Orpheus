@@ -50,6 +50,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Cap `text` to keep records LLM/TPM-friendly (0 = no cap).")
     p.add_argument("--fit-text", action="store_true",
                    help="Use crawl4ai's pruned markdown (fit_markdown) as `text` instead of raw markdown.")
+    p.add_argument("--raw-html", action="store_true",
+                   help="Include unprocessed `rawHtml` in each record (for consumers that parse inline "
+                        "<script type=application/json> data crawl4ai's cleaning would strip).")
     p.add_argument("--max-retries", type=int, default=2, help="Retry transient errors/timeouts/5xx with backoff.")
     p.add_argument("--export-images", metavar="DIR", help="Save page images into DIR (P2 multimodal pointer).")
     p.add_argument("--max-api-responses", type=int, default=DEFAULT_MAX_API_RESPONSES)
@@ -102,6 +105,7 @@ def main(argv: list[str] | None = None) -> int:
         max_api_responses=args.max_api_responses,
         max_text_chars=args.max_text_chars,
         fit_text=args.fit_text,
+        raw_html=args.raw_html,
         max_retries=max(0, args.max_retries),
         csv_output=args.csv,
         page_timeout_ms=args.page_timeout,

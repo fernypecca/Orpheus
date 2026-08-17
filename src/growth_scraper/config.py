@@ -63,7 +63,7 @@ COOKIE_CONTAINER_SELECTORS = [
     '[class*="truste"]', '[id*="truste"]',
     '[class*="usercentrics"]', '[id*="usercentrics"]',
     '[class*="klaro"]', '[class*="osano"]', '[class*="complianz"]',
-    '[class*="onetrust-pc-dark-filter"]', '[id*="ot-sdk"]',
+    '[class*="onetrust-pc-dark-filter"]', '[id*="ot-sdk"]', '[class*="ot-sdk"]',
 ]
 
 # Consent REJECT button text, multi-language. We never click anything that
@@ -136,6 +136,7 @@ class ScrapeConfig:
     max_expansions: int = DEFAULT_MAX_EXPANSIONS
     max_text_chars: int = DEFAULT_MAX_TEXT_CHARS
     fit_text: bool = False
+    raw_html: bool = False
     max_retries: int = DEFAULT_MAX_RETRIES
     retry_backoff: float = DEFAULT_RETRY_BACKOFF
     csv_output: bool = False
@@ -172,9 +173,10 @@ class Record:
     scrapedAt: str = ""
     statusCode: Optional[int] = None
     protectionBlocked: bool = False
+    rawHtml: Optional[str] = None
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "url": self.url,
             "title": self.title,
             "text": self.text,
@@ -189,3 +191,8 @@ class Record:
             "statusCode": self.statusCode,
             "protectionBlocked": self.protectionBlocked,
         }
+        # Opt-in (--raw-html): unprocessed HTML, for consumers that need what
+        # Crawl4AI's cleaning strips (e.g. inline JSON <script> blocks).
+        if self.rawHtml is not None:
+            d["rawHtml"] = self.rawHtml
+        return d

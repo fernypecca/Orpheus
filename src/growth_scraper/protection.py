@@ -49,9 +49,15 @@ def detect(result) -> str | None:
         if frag in html:
             return f'PROTECTION_BLOCKED: anti-bot marker "{frag}" found in HTML'
 
-    # 4) DataDome sometimes serves a block page with a non-"passed" header.
-    if datadome and datadome not in _DATADOME_PASSED:
-        return f"PROTECTION_BLOCKED: DataDome (x-datadome: {datadome})"
+    # 4) DataDome sometimes serves a genuine challenge even on HTTP 200
+    #    (soft-block, no 403). But the header value alone is not enough: sites
+    #    also stamp "x-datadome: protected" on fully-served, real pages (e.g.
+    #    bodas.net vendor profiles return 200 with the real page and this
+    #    exact header — verified live). A real challenge/captcha shell is
+    #    short; a full rendered page is not. Only trust the header when the
+    #    payload also looks like a short challenge, not real content.
+    if datadome and datadome not in _DATADOME_PASSED and len(html) < 5000:
+        return f"PROTECTION_BLOCKED: DataDome (x-datadome: {datadome}, short challenge payload)"
 
     # 5) No HTTP status AND no payload at all: a challenge that never resolved
     #    (e.g. demo.datadome.co served us exactly status=None, empty title,
