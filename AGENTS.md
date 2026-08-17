@@ -116,6 +116,12 @@ necesita internet. `scripts/` tiene los 5 escenarios + `fixture-check.sh`.
   y descarga con httpx. Verificado live en www.python.org.
 - **D24 — Hotlink protection real.** Wikipedia (upload.wikimedia.org) responde
   403 a todo (con y sin Referer) — limitación inherente del host, documentada.
+- **D25 — Workflow: nada directo a main.** Todo cambio va en `feature/*` +
+  Pull Request a `main`. Fer revisa y decide el merge desde GitHub. El repo
+  tiene un pre-push hook que bloquea pushes directos a `main`
+  (bypass del owner: `git push --no-verify`). Si algún día GitHub Pro o repo
+  público: activar ruleset `main-only-via-pr` (branch protection no existe en
+  free para privados). PRs usan `.github/pull_request_template.md`.
 
 ## Estado de los "problemas conocidos" del brief
 
