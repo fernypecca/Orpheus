@@ -24,7 +24,9 @@ de pago, corre en local.
 | `extractors.py` | **P1**. Clasifica `listing` vs `profile` vs `generic` y extrae `items`. |
 | `protection.py` | Fail-closed: detecta Cloudflare/DataDome/Akamai y falla explícito. |
 | `pipeline.py` | Orquesta 1 URL: robots → cache → crawl4ai (hooks) → protección → texto → extractores → apiResponses → imágenes → cache. |
-| `crawl.py` | BFS mismo-dominio con tope. Descubrimiento de links desde el HTML crudo. |
+| `crawl.py` | BFS mismo-dominio con tope. Descubrimiento de links desde el HTML crudo. **Workers concurrentes** (`--concurrency`, robots + pacing por dominio respetados). |
+| `urlutil.py` | Normalización de URLs: quita `utm_*`/fbclid/gclid/params de sesión → dedupe y cache limpios. |
+| `sitemap.py` | Seed desde sitemap (`--sitemap`): index/urlset, namespace-aware, filtrado por robots, cap. |
 
 `tests/` corre contra un **fixture server local** (`fixtureserver.py`), no
 necesita internet. `scripts/` tiene los 5 escenarios + `fixture-check.sh`.
@@ -84,6 +86,25 @@ necesita internet. `scripts/` tiene los 5 escenarios + `fixture-check.sh`.
   overlay (fixed/absolute, seguro para SPAs) y se remueven solo banners
   in-flow estáticos (garantiza texto limpio).
 - **D16 — Descubrimiento de links con `<a href>` del HTML crudo** (ver D8).
+- **D17 — Normalización de URLs para dedupe.** `utm_*`, fbclid, gclid, params de
+  sesión se eliminan (`urlutil.py`) en entrada de CLI, seeds de crawl y enlaces
+  descubiertos. Los records guardan la URL normalizada (limpia de tracking).
+- **D18 — Sesión por-run para concurrencia.** El `Session` compartido no
+  sobrevive a `arun` paralelos. Ahora cada `run_one` crea su `Session` y se la
+  asocia por `config.session_id` (los hooks reciben el `config` y lo leen vía
+  `getattr(config, "session_id", None)`). Tras `arun` se hace
+  `kill_session(sid)` para no filtrar contexts de Chromium.
+- **D19 — Retry con backoff.** Errores transitorios (timeout/exception de
+  `arun`) y `status_code >= 500` se reintentan con backoff exponencial
+  (`--max-retries`, default 2). Si el 5xx persiste → `HTTP_ERROR: NNN`.
+- **D20 — `text` LLM-ready.** `--max-text-chars` (default 12000) capa el texto
+  (truncado en límite de palabra) para que quepa en el TPM de tiers baratos
+  (Groq/NVIDIA gratis). `--fit-text` (opt-in) usa `fit_markdown` de crawl4ai
+  (PruningContentFilter) — opt-in porque el filtrado de crawl4ai ya rompió
+  páginas enteras en D13. Preferimos raw + cap por defecto.
+- **D21 — Sitemaps namespace-aware.** `root.iter("loc")` no matchea tags con
+  namespace XML (`{...}loc`); se filtra por `tag.split("}")[-1]`. Validado live
+  contra el sitemapindex real de BBC (3 páginas crawleadas con concurrencia 2).
 
 ## Estado de los "problemas conocidos" del brief
 
@@ -141,9 +162,8 @@ scripts/fixture-check.sh
 
 ## Evidencia (output real, no "debería funcionar")
 
-`uv run pytest tests/ -q` → **13 passed** (simple, banner cookies, crawl cap +
-dominio, protección fail-closed, cache, P0 XHR, P1 paginación, extractores,
-guard, robots).
+`uv run pytest tests/ -q` → **21 passed** (13 base + normalización, dedupe de
+tracking, crawl concurrente, sitemap, cap de texto, retry 5xx, summary, CSV).
 
 ### Validación live (con internet disponible, jun 2026)
 
@@ -159,6 +179,9 @@ guard, robots).
   El fail-closed se prueba determinista en el fixture: `/blocked` →
   `PROTECTION_BLOCKED` con texto vacío.
 - **Escenario 5** (`python.org`, cache) → PASS. La 2ª corrida salió del cache.
+- **Sitemap + crawl live** (`--sitemap https://www.bbc.com/sitemap.xml
+  --crawl --max-pages 3 --concurrency 2`) → PASS. Sitemapindex real seguido,
+  3 records con `--max-text-chars 800` respetado y CSV con 4 filas.
 
 ### Demo CLI local (fixture server, `work/demo-*.jsonl`)
 

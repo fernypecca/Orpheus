@@ -15,11 +15,16 @@ from typing import Any, Optional
 DEFAULT_DELAY = 0.4          # seconds between page loads (politeness floor)
 DEFAULT_JITTER = 0.2         # random extra delay, uniform(0, jitter)
 DEFAULT_MAX_PAGES = 50       # --crawl page cap
+DEFAULT_CRAWL_CONCURRENCY = 2    # parallel page loads during crawl (robots/delay respected)
 DEFAULT_MAX_API_RESPONSES = 30   # cap on apiResponses per page record
 MAX_API_BODY_BYTES = 500_000     # drop JSON bodies larger than this
 DEFAULT_MAX_EXPANSIONS = 25      # max auto-clicks for collapsed content per page
 DEFAULT_EXPANSION_WAIT_MS = 350  # wait after a click before checking for XHRs
 DEFAULT_PAGE_TIMEOUT_MS = 30_000
+DEFAULT_MAX_TEXT_CHARS = 12_000  # --max-text-chars: keep `text` LLM/TPM-friendly by default
+DEFAULT_MAX_RETRIES = 2          # transient errors (timeout/5xx) are retried with backoff
+DEFAULT_RETRY_BACKOFF = 1.5      # base seconds; grows exponentially per attempt
+SITEMAP_MAX_URLS = 2_000         # cap on URLs fetched from a sitemap
 MAX_PAGINATION_PAGES = 5         # P1 API replay cap
 MAX_LISTING_ITEMS = 50           # items extracted from a listing page
 ROBOTS_UA_TOKEN = "GrowthScraperBot/0.1 (+research; respects robots.txt)"
@@ -122,12 +127,18 @@ class ScrapeConfig:
     ignore_robots: bool = False
     cache_dir: Optional[str] = None
     max_pages: int = DEFAULT_MAX_PAGES
+    concurrency: int = DEFAULT_CRAWL_CONCURRENCY
     expand: bool = True
     capture_apis: bool = True
     handle_consent: bool = True
     export_images: Optional[str] = None
     max_api_responses: int = DEFAULT_MAX_API_RESPONSES
     max_expansions: int = DEFAULT_MAX_EXPANSIONS
+    max_text_chars: int = DEFAULT_MAX_TEXT_CHARS
+    fit_text: bool = False
+    max_retries: int = DEFAULT_MAX_RETRIES
+    retry_backoff: float = DEFAULT_RETRY_BACKOFF
+    csv_output: bool = False
     page_timeout_ms: int = DEFAULT_PAGE_TIMEOUT_MS
     headful: bool = False
     verbose: bool = False
@@ -155,6 +166,7 @@ class Record:
     pageType: str = "generic"
     items: list = field(default_factory=list)
     images: list = field(default_factory=list)
+    summary: dict = field(default_factory=dict)
     error: Optional[str] = None
     crawledFrom: Optional[str] = None
     scrapedAt: str = ""
@@ -170,6 +182,7 @@ class Record:
             "pageType": self.pageType,
             "items": self.items,
             "images": self.images,
+            "summary": self.summary,
             "error": self.error,
             "crawledFrom": self.crawledFrom,
             "scrapedAt": self.scrapedAt,

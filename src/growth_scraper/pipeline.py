@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import json
 import os
+import uuid
 from urllib.parse import urljoin, urlparse
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CacheMode, CrawlerRunConfig
@@ -24,60 +26,16 @@ _HTTPX_IMAGE = None  # lazy import httpx
 
 
 class Session:
-    """Mutable state shared between crawl4ai hooks and our pipeline."""
+    """Mutable state shared between crawl4ai hooks and our pipeline.
+
+    One instance per page run (concurrent crawls keep their own state).
+    """
 
     def __init__(self):
         self.netrec = NetworkRecorder()
         self.page = None
         self.page_url = ""
         self.replayed: list[dict] = []
-
-
-def _hook_attach(session: Session):
-    async def on_page_context_created(page, context, **kwargs):
-        session.page = page
-        await session.netrec.attach(page)
-        await page.evaluate(GUARD_JS)
-        return page
-
-    return on_page_context_created
-
-
-def _hook_after_goto(session: Session, cfg: ScrapeConfig):
-    async def after_goto(page, context, url, response, **kwargs):
-        session.page = page
-        try:
-            if cfg.handle_consent:
-                status = await handle_consent(page)
-                emit_progress(cfg.verbose, f"consent on {url}: {status}")
-            if cfg.expand:
-                summary = await expand_and_scroll(page, cfg, session.netrec)
-                emit_progress(cfg.verbose, f"probe on {url}: {summary}")
-        except Exception as exc:
-            emit_progress(cfg.verbose, f"after_goto probe failed for {url}: {exc}")
-        return page
-
-    return after_goto
-
-
-def _hook_before_retrieve_html(session: Session, cfg: ScrapeConfig):
-    async def before_retrieve_html(page, context, **kwargs):
-        # P1: the page is alive here and has already fired its XHRs; replay any
-        # paginated internal APIs so we capture more than the default load.
-        if cfg.capture_apis and cfg.expand and session.page_url:
-            try:
-                session.netrec.deactivate()  # replay fetches must not be re-captured
-                captured = session.netrec.snapshot()
-                session.replayed = await apipage.replay_pagination(
-                    page, session.page_url, captured
-                )
-                if session.replayed:
-                    emit_progress(cfg.verbose, f"pagination replay: +{len(session.replayed)} responses")
-            except Exception as exc:
-                emit_progress(cfg.verbose, f"pagination replay failed: {exc}")
-        return page
-
-    return before_retrieve_html
 
 
 def _images_dir(base: str) -> str:
@@ -112,16 +70,25 @@ async def _download_images(page_url: str, media, export_dir: str) -> list[str]:
     return saved
 
 
-def _text_from_result(result) -> str:
-    if result.markdown and getattr(result.markdown, "raw_markdown", None):
-        return result.markdown.raw_markdown or ""
-    html = result.cleaned_html or result.html or ""
-    if not html:
-        return ""
-    from bs4 import BeautifulSoup
+def _text_from_result(result, fit_text: bool = False, max_chars: int = 0) -> str:
+    md = getattr(result, "markdown", None)
+    text = ""
+    if md is not None:
+        if fit_text and getattr(md, "fit_markdown", ""):
+            text = md.fit_markdown
+        elif getattr(md, "raw_markdown", ""):
+            text = md.raw_markdown
+    if not text:
+        html = result.cleaned_html or result.html or ""
+        if html:
+            from bs4 import BeautifulSoup
 
-    soup = BeautifulSoup(html, "html.parser")
-    return " ".join(soup.get_text(" ", strip=True).split())
+            soup = BeautifulSoup(html, "html.parser")
+            text = " ".join(soup.get_text(" ", strip=True).split())
+    if max_chars and len(text) > max_chars:
+        cut = text[:max_chars]
+        text = cut.rsplit(" ", 1)[0] if " " in cut else cut
+    return text
 
 
 def _title_from_result(result) -> str:
@@ -137,11 +104,40 @@ def _title_from_result(result) -> str:
     return ""
 
 
+def _build_summary(url: str, title: str, page_type: str, items: list, text: str, html: str) -> dict:
+    """Cheap structured triage fields so growth marketers can filter before the LLM."""
+    host = (urlparse(url).hostname or "").lower().removeprefix("www.")
+    meta, h1 = "", ""
+    if html:
+        from bs4 import BeautifulSoup
+
+        try:
+            soup = BeautifulSoup(html, "html.parser")
+            m = soup.select_one("meta[name='description']")
+            if m:
+                meta = " ".join((m.get("content") or "").split())
+            h = soup.select_one("h1")
+            if h:
+                h1 = " ".join(h.get_text(" ", strip=True).split())
+        except Exception:
+            pass
+    return {
+        "domain": host,
+        "title": title,
+        "metaDescription": meta,
+        "h1": h1,
+        "wordCount": len(text.split()),
+        "itemCount": len(items),
+        "pageType": page_type,
+    }
+
+
 class Pipeline:
     def __init__(self, cfg: ScrapeConfig, robots: RobotsPolicy):
         self.cfg = cfg
         self.robots = robots
-        self.session = Session()
+        self.session = Session()  # fallback when a hook gets no session_id
+        self._sessions: dict[str, Session] = {}
         self._last_result = None
         self.browser_cfg = BrowserConfig(
             headless=not cfg.headful,
@@ -149,7 +145,7 @@ class Pipeline:
             verbose=cfg.verbose,
             user_agent=_HONEST_UA,
         )
-        self.run_cfg = CrawlerRunConfig(
+        run_kwargs = dict(
             cache_mode=CacheMode.BYPASS,
             capture_network_requests=True,
             remove_consent_popups=False,  # we handle consent ourselves (reject-only)
@@ -160,17 +156,68 @@ class Pipeline:
             word_count_threshold=3,
             verbose=cfg.verbose,
         )
+        if cfg.fit_text:
+            from crawl4ai.content_filter_strategy import PruningContentFilter
+            from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
+
+            run_kwargs["markdown_generator"] = DefaultMarkdownGenerator(
+                content_filter=PruningContentFilter(min_word_threshold=4)
+            )
+        self.run_cfg = CrawlerRunConfig(**run_kwargs)
+
+    # -- hooks (per-run sessions keyed by the config.session_id each arun carries)
+    def _session_for(self, config) -> Session:
+        sid = getattr(config, "session_id", None)
+        return self._sessions.get(sid) or self.session
+
+    async def _hook_attach(self, page, context, config=None, **kwargs):
+        session = self._session_for(config)
+        session.page = page
+        await session.netrec.attach(page)
+        await page.evaluate(GUARD_JS)
+        return page
+
+    async def _hook_after_goto(self, page, context, url, config=None, **kwargs):
+        session = self._session_for(config)
+        session.page = page
+        try:
+            if self.cfg.handle_consent:
+                status = await handle_consent(page)
+                emit_progress(self.cfg.verbose, f"consent on {url}: {status}")
+            if self.cfg.expand:
+                summary = await expand_and_scroll(page, self.cfg, session.netrec)
+                emit_progress(self.cfg.verbose, f"probe on {url}: {summary}")
+        except Exception as exc:
+            emit_progress(self.cfg.verbose, f"after_goto probe failed for {url}: {exc}")
+        return page
+
+    async def _hook_before_retrieve_html(self, page, context, config=None, **kwargs):
+        # P1: the page is alive here and has already fired its XHRs; replay any
+        # paginated internal APIs so we capture more than the default load.
+        session = self._session_for(config)
+        if self.cfg.capture_apis and self.cfg.expand and session.page_url:
+            try:
+                session.netrec.deactivate()  # replay fetches must not be re-captured
+                captured = session.netrec.snapshot()
+                session.replayed = await apipage.replay_pagination(
+                    page, session.page_url, captured
+                )
+                if session.replayed:
+                    emit_progress(self.cfg.verbose, f"pagination replay: +{len(session.replayed)} responses")
+            except Exception as exc:
+                emit_progress(self.cfg.verbose, f"pagination replay failed: {exc}")
+        return page
 
     async def start(self):
         self.crawler = AsyncWebCrawler(config=self.browser_cfg)
         self.crawler.crawler_strategy.set_hook(
-            "on_page_context_created", _hook_attach(self.session)
+            "on_page_context_created", self._hook_attach
         )
         self.crawler.crawler_strategy.set_hook(
-            "after_goto", _hook_after_goto(self.session, self.cfg)
+            "after_goto", self._hook_after_goto
         )
         self.crawler.crawler_strategy.set_hook(
-            "before_retrieve_html", _hook_before_retrieve_html(self.session, self.cfg)
+            "before_retrieve_html", self._hook_before_retrieve_html
         )
         await self.crawler.start()
 
@@ -200,18 +247,58 @@ class Pipeline:
                 return cached
 
         emit_progress(self.cfg.verbose, f"crawling {url}")
-        self.session.netrec.reset(url)
-        self.session.page_url = url
-        self.session.replayed = []
 
-        try:
-            result = await self.crawler.arun(url, config=self.run_cfg)
-        except Exception as exc:
-            record.error = f"CRAWL_ERROR: {exc}"
+        # One browser context per run so concurrent crawls don't share state.
+        attempts = 1 + self.cfg.max_retries
+        result = None
+        last_exc: Exception | None = None
+        used_session: Session | None = None
+        for attempt in range(attempts):
+            sid = uuid.uuid4().hex
+            session = Session()
+            session.page_url = url
+            session.netrec.reset(url)  # starts the recorder active for this page
+            self._sessions[sid] = session
+            run_cfg = copy.copy(self.run_cfg)
+            run_cfg.session_id = sid
+            try:
+                result = await self.crawler.arun(url, config=run_cfg)
+                if result is None:
+                    raise RuntimeError("crawl4ai returned no result")
+                status = getattr(result, "status_code", None)
+                if status is not None and status >= 500 and attempt < attempts - 1:
+                    emit_progress(self.cfg.verbose, f"retry {url}: status {status} (attempt {attempt + 1}/{attempts})")
+                    result = None
+                    continue
+                used_session = session
+                break
+            except Exception as exc:
+                last_exc = exc
+                if attempt < attempts - 1:
+                    emit_progress(self.cfg.verbose, f"retry {url}: {exc}")
+                    await asyncio.sleep(self.cfg.retry_backoff * (2 ** attempt))
+                    continue
+                break
+            finally:
+                self._sessions.pop(sid, None)
+                try:
+                    await self.crawler.crawler_strategy.kill_session(sid)
+                except Exception:
+                    pass
+
+        if result is None:
+            record.error = f"CRAWL_ERROR: {last_exc or 'no result after retries'}"
             return record
 
         record.statusCode = getattr(result, "status_code", None)
+        if record.statusCode is not None and record.statusCode >= 500:
+            record.error = f"HTTP_ERROR: {record.statusCode} after {attempts} attempt(s)"
+            emit_progress(self.cfg.verbose, record.error)
+            return record
+
         self._last_result = result
+        raw_html = getattr(result, "html", "") or ""
+        setattr(record, "_raw_html", raw_html)
 
         # fail-closed anti-bot detection
         reason = protection.detect(result)
@@ -222,17 +309,19 @@ class Pipeline:
             return record
 
         record.title = _title_from_result(result)
-        record.text = _text_from_result(result)
+        record.text = _text_from_result(result, fit_text=self.cfg.fit_text, max_chars=self.cfg.max_text_chars)
 
         # P1: page-type extractors
         if result.cleaned_html or result.html:
             record.pageType, record.items = extractors.run_extraction(result)
 
+        record.summary = _build_summary(url, record.title, record.pageType, record.items, record.text, raw_html)
+
         # P0/P1: API responses + pagination replay (deduped by URL)
-        if self.cfg.capture_apis:
+        if self.cfg.capture_apis and used_session is not None:
             seen_urls: set[str] = set()
             api_responses: list[dict] = []
-            for entry in self.session.netrec.snapshot() + self.session.replayed:
+            for entry in used_session.netrec.snapshot() + used_session.replayed:
                 u = entry.get("url")
                 if u in seen_urls:
                     continue
@@ -249,14 +338,15 @@ class Pipeline:
         return record
 
     # -- link discovery for crawl mode ----------------------------------------
-    def discover_links(self, url: str) -> list[str]:
+    def discover_links(self, url: str, html: str = "") -> list[str]:
         """Extract same-host links from the raw HTML.
 
         crawl4ai's `result.links` is derived from the *cleaned* DOM, so links
         living inside <nav>/<footer> (which we exclude) would be missed. We
         parse the original HTML instead.
         """
-        html = getattr(self._last_result, "html", "") or ""
+        if not html:
+            html = getattr(self._last_result, "html", "") or ""
         if not html:
             return []
         from bs4 import BeautifulSoup

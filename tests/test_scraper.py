@@ -198,3 +198,118 @@ def test_robots_ignore_flag(fs):
     rec = run(scrape_url(base_cfg(ignore_robots=True), fs.url("/private")))
     assert rec.error is None
     assert "contenido es privado" in rec.text
+
+
+# ---------------------------------------------------------------------------
+# URL normalization (P0): tracking params are stripped for dedupe and records
+# ---------------------------------------------------------------------------
+def test_url_normalization_unit():
+    from growth_scraper.urlutil import normalize_url
+
+    assert normalize_url("HTTP://Example.COM/path?utm_source=x&a=1#sec") == "http://example.com/path?a=1"
+    assert normalize_url("https://x.com/p?fbclid=1&gclid=2&q=hola") == "https://x.com/p?q=hola"
+    assert normalize_url("https://x.com/p?q=hola&page=2") == "https://x.com/p?q=hola&page=2"
+
+
+def test_crawl_dedupes_tracking_params(fs, tmp_path):
+    """Two links to the same page with different tracking params -> one record, clean URL."""
+    from growth_scraper.cli import main
+
+    out = tmp_path / "crawl_utm.jsonl"
+    code = main(
+        [fs.url("/looputm"), "--crawl", "--max-pages", "4", "--concurrency", "2",
+         "-o", str(out), "--delay", "0", "--jitter", "0"]
+    )
+    assert code == 0
+    records = [json.loads(ln) for ln in out.read_text().strip().splitlines()]
+    assert len(records) == 3, f"tracking duplicates must dedupe, got {len(records)}"
+    for r in records:
+        assert "utm_" not in r["url"] and "fbclid" not in r["url"]
+    assert any(r["url"].endswith("/loop2") for r in records)
+
+
+def test_crawl_concurrency(fs, tmp_path):
+    from growth_scraper.cli import main
+
+    out = tmp_path / "crawl_conc.jsonl"
+    code = main(
+        [fs.url("/loop"), "--crawl", "--max-pages", "3", "--concurrency", "2",
+         "-o", str(out), "--delay", "0", "--jitter", "0"]
+    )
+    assert code == 0
+    records = [json.loads(ln) for ln in out.read_text().strip().splitlines()]
+    assert len(records) == 3
+    assert any(r["url"].endswith("/loop2") for r in records)
+    assert any(r["url"].endswith("/loop3") for r in records)
+
+
+# ---------------------------------------------------------------------------
+# Sitemap seed (P1): --sitemap seeds the crawl from sitemap.xml
+# ---------------------------------------------------------------------------
+def test_sitemap_seed(fs, tmp_path):
+    from growth_scraper.cli import main
+
+    out = tmp_path / "sitemap.jsonl"
+    code = main(
+        ["--sitemap", fs.url("/sitemap.xml"), "-o", str(out),
+         "--delay", "0", "--jitter", "0"]
+    )
+    assert code == 0
+    records = [json.loads(ln) for ln in out.read_text().strip().splitlines()]
+    urls = [r["url"] for r in records]
+    assert any(u.endswith("/") and u.count("/") == 3 for u in urls)  # the home page
+    assert any(u.endswith("/loop2") for u in urls)
+    assert not any("/private" in u for u in urls), "robots-disallowed must be filtered"
+
+
+# ---------------------------------------------------------------------------
+# LLM-ready text (P1): --max-text-chars caps records for small TPM tiers
+# ---------------------------------------------------------------------------
+def test_max_text_chars(fs):
+    rec = run(scrape_url(base_cfg(max_text_chars=40), fs.url("/")))
+    d = rec.to_dict()
+    assert d["error"] is None
+    assert 0 < len(d["text"]) <= 40
+    assert d["summary"]["wordCount"] == len(d["text"].split())
+
+
+# ---------------------------------------------------------------------------
+# Retry with backoff (P2): transient 5xx is retried
+# ---------------------------------------------------------------------------
+def test_retry_transient_5xx(fs):
+    url = fs.url("/flaky")
+    before = fs.state.hits["/flaky"]
+    rec = run(scrape_url(base_cfg(), url))
+    assert rec.error is None
+    assert rec.statusCode == 200
+    assert fs.state.hits["/flaky"] == before + 2, "500 then 200 = 2 hits"
+
+
+# ---------------------------------------------------------------------------
+# Summary field (P2): cheap structured triage data on every record
+# ---------------------------------------------------------------------------
+def test_summary_field(fs):
+    rec = run(scrape_url(base_cfg(), fs.url("/profile")))
+    s = rec.to_dict()["summary"]
+    assert s["domain"] == "127.0.0.1"
+    assert s["title"] == "Proveedor 3"
+    assert s["pageType"] == "profile"
+    assert s["itemCount"] == 1
+    assert s["wordCount"] > 0
+
+
+# ---------------------------------------------------------------------------
+# CSV export (P2): --csv writes a flat summary next to the .jsonl
+# ---------------------------------------------------------------------------
+def test_csv_output(fs, tmp_path):
+    from growth_scraper.cli import main
+
+    out = tmp_path / "cli.jsonl"
+    code = main([fs.url("/"), "-o", str(out), "--csv", "--delay", "0", "--jitter", "0"])
+    assert code == 0
+    csv_path = tmp_path / "cli.csv"
+    assert csv_path.exists()
+    lines = csv_path.read_text().strip().splitlines()
+    assert lines[0].startswith("url,title,pageType,domain")
+    assert len(lines) == 2  # header + 1 record
+    assert "Acme Simple Page" in lines[1]

@@ -140,6 +140,17 @@ def build_pages() -> dict:
         ),
         "/loop2": page("Loop two", "<h1>Loop two</h1><p>Contenido de la página dos.</p>"),
         "/loop3": page("Loop three", "<h1>Loop three</h1><p>Contenido de la página tres.</p>"),
+        "/looputm": page(
+            "Loop utm hub",
+            """
+            <h1>Loop utm hub</h1>
+            <nav>
+            <a href="/loop2?utm_source=email&utm_medium=newsletter">two utm</a>
+            <a href="/loop2?fbclid=abc123">two fbclid</a>
+            <a href="/loop3">three</a>
+            </nav>
+            """,
+        ),
         "/private": page("Pagina privada", "<h1>Pagina privada</h1><p>Este contenido es privado.</p>"),
     }
 
@@ -188,6 +199,25 @@ class Handler(BaseHTTPRequestHandler):
                 '<body><div id="challenge-form">Comprobando tu navegador...</div></body></html>'
             ).encode()
             self._send(403, body, headers={"Server": "cloudflare", "cf-ray": "fixture-ray"})
+            return
+        if path == "/flaky":
+            if self.state.hits["/flaky"] <= 1:
+                self._send(500, b"boom")
+                return
+            html = self.pages.get("/") or b""
+            if isinstance(html, str):
+                html = html.encode("utf-8")
+            self._send(200, html)
+            return
+        if path == "/sitemap.xml":
+            base = f"http://{self.headers['Host']}"
+            body = f"""<?xml version="1.0" encoding="UTF-8"?>
+            <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+              <url><loc>{base}/</loc></url>
+              <url><loc>{base}/loop2</loc></url>
+              <url><loc>{base}/private</loc></url>
+            </urlset>""".encode()
+            self._send(200, body, "application/xml; charset=utf-8")
             return
 
         html = self.pages.get(path)
