@@ -105,6 +105,17 @@ necesita internet. `scripts/` tiene los 5 escenarios + `fixture-check.sh`.
 - **D21 — Sitemaps namespace-aware.** `root.iter("loc")` no matchea tags con
   namespace XML (`{...}loc`); se filtra por `tag.split("}")[-1]`. Validado live
   contra el sitemapindex real de BBC (3 páginas crawleadas con concurrencia 2).
+- **D22 — Fail-closed para "stall" silencioso.** `demo.datadome.co` servía
+  `status_code=None` + título/texto vacíos sin que ninguna regla lo cazara.
+  Nueva regla 5 en `protection.py`: sin status HTTP y payload vacío →
+  `PROTECTION_BLOCKED`. Verificado live.
+- **D23 — Imágenes extraídas del HTML crudo, no de `result.media`.**
+  Bug de crawl4ai 0.9.2: con `excluded_tags` seteado (lo necesitamos para el
+  texto limpio) `result.media` devuelve **cero** imágenes. `_extract_image_urls`
+  parsea `<img src/data-src/srcset>` del HTML crudo con bs4 (soporta lazy-load)
+  y descarga con httpx. Verificado live en www.python.org.
+- **D24 — Hotlink protection real.** Wikipedia (upload.wikimedia.org) responde
+  403 a todo (con y sin Referer) — limitación inherente del host, documentada.
 
 ## Estado de los "problemas conocidos" del brief
 
@@ -162,8 +173,9 @@ scripts/fixture-check.sh
 
 ## Evidencia (output real, no "debería funcionar")
 
-`uv run pytest tests/ -q` → **21 passed** (13 base + normalización, dedupe de
-tracking, crawl concurrente, sitemap, cap de texto, retry 5xx, summary, CSV).
+`uv run pytest tests/ -q` → **24 passed** (13 base + normalización, dedupe de
+tracking, crawl concurrente, sitemap, cap de texto, retry 5xx, summary, CSV,
+fail-closed stall, export de imágenes).
 
 ### Validación live (con internet disponible, jun 2026)
 
@@ -182,6 +194,11 @@ tracking, crawl concurrente, sitemap, cap de texto, retry 5xx, summary, CSV).
 - **Sitemap + crawl live** (`--sitemap https://www.bbc.com/sitemap.xml
   --crawl --max-pages 3 --concurrency 2`) → PASS. Sitemapindex real seguido,
   3 records con `--max-text-chars 800` respetado y CSV con 4 filas.
+- **Fail-closed live** (`https://demo.datadome.co`) → PASS tras D22:
+  `PROTECTION_BLOCKED: no HTTP status and empty payload (bot challenge...)`.
+  (Antes: record vacío sin error.)
+- **Export de imágenes live** (`www.python.org --export-images`) → PASS: PNG
+  real descargado (580x164). Wikipedia falla por hotlink protection (D24).
 
 ### Demo CLI local (fixture server, `work/demo-*.jsonl`)
 

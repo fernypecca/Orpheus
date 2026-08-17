@@ -5,6 +5,7 @@ all against a deterministic LOCAL fixture server (no internet needed).
 """
 
 import json
+import os
 
 from conftest import base_cfg, run, scrape_url
 
@@ -283,6 +284,52 @@ def test_retry_transient_5xx(fs):
     assert rec.error is None
     assert rec.statusCode == 200
     assert fs.state.hits["/flaky"] == before + 2, "500 then 200 = 2 hits"
+
+
+def test_protection_detect_empty_stalled_page():
+    """No HTTP status + empty payload = fail closed (demo.datadome.co case)."""
+    from growth_scraper import protection
+
+    class Stub:
+        status_code = None
+        html = ""
+        metadata = {}
+        response_headers = {}
+
+    reason = protection.detect(Stub())
+    assert reason and reason.startswith("PROTECTION_BLOCKED")
+    assert "empty payload" in reason
+
+
+# ---------------------------------------------------------------------------
+# Image export (P2): extracted from raw HTML, downloaded to the export dir
+# ---------------------------------------------------------------------------
+def test_image_export_extracts_and_downloads(fs, tmp_path):
+    from growth_scraper.cli import main
+
+    img_dir = tmp_path / "assets"
+    out = tmp_path / "img.jsonl"
+    code = main([fs.url("/withimg"), "-o", str(out), "--export-images", str(img_dir),
+                 "--delay", "0", "--jitter", "0"])
+    assert code == 0
+    rec = json.loads(out.read_text().strip())
+    assert len(rec["images"]) == 2, f"src + data-src both extracted, got {rec['images']}"
+    for path in rec["images"]:
+        assert os.path.exists(path)
+
+
+def test_extract_image_urls_unit():
+    from growth_scraper.pipeline import _extract_image_urls
+
+    html = (
+        '<img src="/a.png"><img data-src="/b.jpg"><img srcset="/c-small.png 1x, /c-big.png 2x">'
+    )
+    urls = _extract_image_urls("https://x.com/p", html, limit=10)
+    assert urls == [
+        "https://x.com/a.png",
+        "https://x.com/b.jpg",
+        "https://x.com/c-big.png",
+    ]
 
 
 # ---------------------------------------------------------------------------

@@ -43,19 +43,15 @@ def _images_dir(base: str) -> str:
     return base
 
 
-async def _download_images(page_url: str, media, export_dir: str) -> list[str]:
+async def _download_images(page_url: str, image_urls: list[str], export_dir: str) -> list[str]:
     global _HTTPX_IMAGE
-    if not media or not media.get("images"):
+    if not image_urls:
         return []
     import httpx  # lazy
 
     _HTTPX_IMAGE = _HTTPX_IMAGE or httpx.Client(timeout=15, follow_redirects=True)
     saved: list[str] = []
-    for img in media["images"][:20]:
-        src = img.get("src") or img.get("data-src")
-        if not src or src.startswith("data:"):
-            continue
-        url = urljoin(page_url, src)
+    for url in image_urls:
         digest = hashlib.sha1(url.encode()).hexdigest()[:12]
         ext = os.path.splitext(urlparse(url).path)[1] or ".jpg"
         path = os.path.join(export_dir, f"{digest}{ext}")
@@ -68,6 +64,43 @@ async def _download_images(page_url: str, media, export_dir: str) -> list[str]:
         except Exception:
             continue
     return saved
+
+
+def _extract_image_urls(page_url: str, html: str, limit: int = 20) -> list[str]:
+    """Image URLs from the raw HTML.
+
+    We parse the original HTML ourselves instead of relying on crawl4ai's
+    `result.media`: with `excluded_tags` set (which we need for clean text),
+    crawl4ai 0.9.2 silently captures zero images. This also handles lazy-loaded
+    `srcset`/`data-src` attributes.
+    """
+    if not html:
+        return []
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    urls: list[str] = []
+    seen: set[str] = set()
+    for img in soup.find_all("img"):
+        src = img.get("src") or img.get("data-src") or img.get("data-lazy-src")
+        if not src or src.startswith("data:"):
+            srcset = img.get("srcset")
+            if srcset:
+                candidates = [c.strip().rsplit(" ", 1) for c in srcset.split(",") if c.strip()]
+                candidates = [c[0] for c in candidates if c and c[0]]
+                src = candidates[-1] if candidates else ""
+            else:
+                continue
+        if not src or src.startswith("data:"):
+            continue
+        resolved = urljoin(page_url, src)
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        urls.append(resolved)
+        if len(urls) >= limit:
+            break
+    return urls
 
 
 def _text_from_result(result, fit_text: bool = False, max_chars: int = 0) -> str:
@@ -330,8 +363,10 @@ class Pipeline:
             record.apiResponses = api_responses[: self.cfg.max_api_responses]
 
         # optional image export (P2 multimodal pointer)
-        if self.cfg.export_images and result.media:
-            record.images = await _download_images(url, result.media, _images_dir(self.cfg.export_images))
+        if self.cfg.export_images and raw_html:
+            img_urls = _extract_image_urls(url, raw_html)
+            if img_urls:
+                record.images = await _download_images(url, img_urls, _images_dir(self.cfg.export_images))
 
         if self.cfg.cache_dir:
             self._cache_write(url, record)

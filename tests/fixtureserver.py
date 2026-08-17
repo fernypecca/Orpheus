@@ -152,6 +152,10 @@ def build_pages() -> dict:
             """,
         ),
         "/private": page("Pagina privada", "<h1>Pagina privada</h1><p>Este contenido es privado.</p>"),
+        "/withimg": page(
+            "Con imagen",
+            '<h1>Con imagen</h1><img src="/img.png" alt="test"><img data-src="/img2.png" alt="lazy">',
+        ),
     }
 
 
@@ -208,6 +212,14 @@ class Handler(BaseHTTPRequestHandler):
             if isinstance(html, str):
                 html = html.encode("utf-8")
             self._send(200, html)
+            return
+        if path == "/img.png" or path == "/img2.png":
+            # 1x1 transparent PNG
+            png = bytes.fromhex(
+                "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+                "0000000d49444154789c6360010000050001d78592b60000000049454e44ae426082"
+            )
+            self._send(200, png, "image/png")
             return
         if path == "/sitemap.xml":
             base = f"http://{self.headers['Host']}"

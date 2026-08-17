@@ -53,4 +53,10 @@ def detect(result) -> str | None:
     if datadome and datadome not in _DATADOME_PASSED:
         return f"PROTECTION_BLOCKED: DataDome (x-datadome: {datadome})"
 
+    # 5) No HTTP status AND no payload at all: a challenge that never resolved
+    #    (e.g. demo.datadome.co served us exactly status=None, empty title,
+    #    empty text). Fail closed instead of silently emitting an empty record.
+    if status is None and not html and not title:
+        return "PROTECTION_BLOCKED: no HTTP status and empty payload (bot challenge / stalled load)"
+
     return None
