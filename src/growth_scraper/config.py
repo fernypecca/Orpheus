@@ -116,6 +116,38 @@ PROTECTED_HTML_FRAGMENTS = [
     "cf_chl_opt", "__cf_chl", "_px3",
 ]
 
+# ---------------------------------------------------------------------------
+# Structured extraction (P2): heuristic selectors, used only when a page has no
+# schema/meta signals. Multi-language on purpose (same convention as the click
+# guard blacklist).
+# ---------------------------------------------------------------------------
+STRUCTURED_MAX_JSONLD_BYTES = 1_000_000  # guard against huge @graph blobs
+STRUCTURED_PRICE_SELECTORS = [
+    "[itemprop='price']", "[data-price]", ".price", "[class*='price']",
+    ".precio", "[data-precio]",
+]
+STRUCTURED_RATING_SELECTORS = [
+    "[itemprop='ratingValue']", "[class*='rating']", "[class*='stars']",
+    "[data-rating]", "[aria-label*='stars']", ".valoracion",
+]
+STRUCTURED_REVIEW_COUNT_SELECTORS = [
+    "[itemprop='reviewCount']", "[class*='review-count']", "[class*='reviews']",
+    "[data-review-count]", ".num-resenas",
+]
+STRUCTURED_CATEGORY_SELECTORS = [
+    ".breadcrumb", "[class*='breadcrumb']", "[aria-label='breadcrumb']",
+    "nav[aria-label*='breadcrumb']", "[itemprop='itemListElement']",
+]
+STRUCTURED_PHONE_SELECTORS = [
+    "[itemprop='telephone']", "a[href^='tel:']",
+]
+STRUCTURED_EMAIL_SELECTORS = [
+    "[itemprop='email']", "a[href^='mailto:']",
+]
+STRUCTURED_ADDRESS_SELECTORS = [
+    "[itemprop='address']", "address",
+]
+
 
 @dataclass
 class ScrapeConfig:
