@@ -37,6 +37,7 @@ class Session:
         self.page = None
         self.page_url = ""
         self.replayed: list[dict] = []
+        self.cfg: "ScrapeConfig | None" = None
 
 
 def _images_dir(base: str) -> str:
@@ -181,6 +182,7 @@ class Pipeline:
         self.cfg = cfg
         self.robots = robots
         self.session = Session()  # fallback when a hook gets no session_id
+        self.session.cfg = self.cfg
         self._sessions: dict[str, Session] = {}
         self._last_result = None
         self.browser_cfg = BrowserConfig(
@@ -223,23 +225,25 @@ class Pipeline:
 
     async def _hook_after_goto(self, page, context, url, config=None, **kwargs):
         session = self._session_for(config)
+        cfg = session.cfg or self.cfg
         session.page = page
         try:
-            if self.cfg.handle_consent:
+            if cfg.handle_consent:
                 status = await handle_consent(page)
-                emit_progress(self.cfg.verbose, f"consent on {url}: {status}")
-            if self.cfg.expand:
-                summary = await expand_and_scroll(page, self.cfg, session.netrec)
-                emit_progress(self.cfg.verbose, f"probe on {url}: {summary}")
+                emit_progress(cfg.verbose, f"consent on {url}: {status}")
+            if cfg.expand:
+                summary = await expand_and_scroll(page, cfg, session.netrec)
+                emit_progress(cfg.verbose, f"probe on {url}: {summary}")
         except Exception as exc:
-            emit_progress(self.cfg.verbose, f"after_goto probe failed for {url}: {exc}")
+            emit_progress(cfg.verbose, f"after_goto probe failed for {url}: {exc}")
         return page
 
     async def _hook_before_retrieve_html(self, page, context, config=None, **kwargs):
         # P1: the page is alive here and has already fired its XHRs; replay any
         # paginated internal APIs so we capture more than the default load.
         session = self._session_for(config)
-        if self.cfg.capture_apis and self.cfg.expand and session.page_url:
+        cfg = session.cfg or self.cfg
+        if cfg.capture_apis and cfg.expand and session.page_url:
             try:
                 session.netrec.deactivate()  # replay fetches must not be re-captured
                 captured = session.netrec.snapshot()
@@ -247,9 +251,9 @@ class Pipeline:
                     page, session.page_url, captured
                 )
                 if session.replayed:
-                    emit_progress(self.cfg.verbose, f"pagination replay: +{len(session.replayed)} responses")
+                    emit_progress(cfg.verbose, f"pagination replay: +{len(session.replayed)} responses")
             except Exception as exc:
-                emit_progress(self.cfg.verbose, f"pagination replay failed: {exc}")
+                emit_progress(cfg.verbose, f"pagination replay failed: {exc}")
         return page
 
     async def start(self):
@@ -271,29 +275,32 @@ class Pipeline:
         except Exception:
             pass
 
-    async def run_one(self, url: str, crawled_from: str | None = None) -> Record:
+    async def run_one(self, url: str, crawled_from: str | None = None,
+                      cfg: ScrapeConfig | None = None) -> Record:
+        cfg = cfg or self.cfg
         record = Record(url=url, crawledFrom=crawled_from)
 
         # robots.txt (default: respected)
-        if not self.cfg.ignore_robots:
+        if not cfg.ignore_robots:
             allowed = await self.robots.is_allowed(url)
             if not allowed:
                 record.error = "ROBOTS_BLOCKED: disallowed by robots.txt"
-                emit_progress(self.cfg.verbose, f"robots.txt blocks {url}")
+                emit_progress(cfg.verbose, f"robots.txt blocks {url}")
                 return record
 
         # local record cache
-        if self.cfg.cache_dir and not crawled_from:
+        if cfg.cache_dir and not crawled_from:
             cached = self._cache_read(url)
             if cached is not None:
                 cached.crawledFrom = crawled_from
-                emit_progress(self.cfg.verbose, f"cache hit: {url}")
+                cached.fromCache = True
+                emit_progress(cfg.verbose, f"cache hit: {url}")
                 return cached
 
-        emit_progress(self.cfg.verbose, f"crawling {url}")
+        emit_progress(cfg.verbose, f"crawling {url}")
 
         # One browser context per run so concurrent crawls don't share state.
-        attempts = 1 + self.cfg.max_retries
+        attempts = 1 + cfg.max_retries
         result = None
         last_exc: Exception | None = None
         used_session: Session | None = None
@@ -301,6 +308,7 @@ class Pipeline:
             sid = uuid.uuid4().hex
             session = Session()
             session.page_url = url
+            session.cfg = cfg
             session.netrec.reset(url)  # starts the recorder active for this page
             self._sessions[sid] = session
             run_cfg = copy.copy(self.run_cfg)
@@ -311,7 +319,7 @@ class Pipeline:
                     raise RuntimeError("crawl4ai returned no result")
                 status = getattr(result, "status_code", None)
                 if status is not None and status >= 500 and attempt < attempts - 1:
-                    emit_progress(self.cfg.verbose, f"retry {url}: status {status} (attempt {attempt + 1}/{attempts})")
+                    emit_progress(cfg.verbose, f"retry {url}: status {status} (attempt {attempt + 1}/{attempts})")
                     result = None
                     continue
                 used_session = session
@@ -319,8 +327,8 @@ class Pipeline:
             except Exception as exc:
                 last_exc = exc
                 if attempt < attempts - 1:
-                    emit_progress(self.cfg.verbose, f"retry {url}: {exc}")
-                    await asyncio.sleep(self.cfg.retry_backoff * (2 ** attempt))
+                    emit_progress(cfg.verbose, f"retry {url}: {exc}")
+                    await asyncio.sleep(cfg.retry_backoff * (2 ** attempt))
                     continue
                 break
             finally:
@@ -337,13 +345,13 @@ class Pipeline:
         record.statusCode = getattr(result, "status_code", None)
         if record.statusCode is not None and record.statusCode >= 500:
             record.error = f"HTTP_ERROR: {record.statusCode} after {attempts} attempt(s)"
-            emit_progress(self.cfg.verbose, record.error)
+            emit_progress(cfg.verbose, record.error)
             return record
 
         self._last_result = result
         raw_html = getattr(result, "html", "") or ""
         setattr(record, "_raw_html", raw_html)
-        if self.cfg.raw_html:
+        if cfg.raw_html:
             record.rawHtml = raw_html
 
         # fail-closed anti-bot detection
@@ -351,11 +359,11 @@ class Pipeline:
         if reason:
             record.error = reason
             record.protectionBlocked = True
-            emit_progress(self.cfg.verbose, reason)
+            emit_progress(cfg.verbose, reason)
             return record
 
         record.title = _title_from_result(result)
-        record.text = _text_from_result(result, fit_text=self.cfg.fit_text, max_chars=self.cfg.max_text_chars)
+        record.text = _text_from_result(result, fit_text=cfg.fit_text, max_chars=cfg.max_text_chars)
 
         # P1: page-type extractors
         if result.cleaned_html or result.html:
@@ -365,7 +373,7 @@ class Pipeline:
         record.summary = _build_summary(url, record.title, record.pageType, record.items, record.text, raw_html, record.structured)
 
         # P0/P1: API responses + pagination replay (deduped by URL)
-        if self.cfg.capture_apis and used_session is not None:
+        if cfg.capture_apis and used_session is not None:
             seen_urls: set[str] = set()
             api_responses: list[dict] = []
             for entry in used_session.netrec.snapshot() + used_session.replayed:
@@ -374,15 +382,15 @@ class Pipeline:
                     continue
                 seen_urls.add(u)
                 api_responses.append(entry)
-            record.apiResponses = api_responses[: self.cfg.max_api_responses]
+            record.apiResponses = api_responses[: cfg.max_api_responses]
 
         # optional image export (P2 multimodal pointer)
-        if self.cfg.export_images and raw_html:
+        if cfg.export_images and raw_html:
             img_urls = _extract_image_urls(url, raw_html)
             if img_urls:
-                record.images = await _download_images(url, img_urls, _images_dir(self.cfg.export_images))
+                record.images = await _download_images(url, img_urls, _images_dir(cfg.export_images))
 
-        if self.cfg.cache_dir:
+        if cfg.cache_dir:
             self._cache_write(url, record)
         return record
 
