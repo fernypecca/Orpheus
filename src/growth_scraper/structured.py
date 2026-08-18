@@ -143,14 +143,16 @@ def _ld_price(offers) -> dict | None:
     currency = offers.get("priceCurrency")
     if isinstance(value, list):
         value = value[0] if value else None
-    is_range = bool(high) or (isinstance(value, str) and ("-" in value or "–" in value))
-    if high:
-        value = f"{value}–{high}"
     if value is None:
         price_range = offers.get("priceRange") or ""
         if price_range:
             return {"value": _clean(price_range), "currency": _clean(currency), "isRange": True}
+        if high:
+            return {"value": _clean(high), "currency": _clean(currency), "isRange": True}
         return None
+    is_range = bool(high) or (isinstance(value, str) and "-" in value or "–" in value)
+    if high:
+        value = f"{value}–{high}"
     return {"value": _clean(value), "currency": _clean(currency), "isRange": is_range}
 
 
@@ -292,11 +294,12 @@ def _from_microdata(soup: BeautifulSoup) -> dict | None:
     out["source"] = "microdata"
     out["name"] = props.get("name") or None
     out["description"] = props.get("description") or None
-    price = props.get("price") or props.get("priceRange")
-    price_from_pricerange = "priceRange" in props
-    if price:
-        out["price"] = {"value": price, "currency": props.get("priceCurrency") or None,
-                        "isRange": price_from_pricerange or "-" in price or "–" in price}
+    price = props.get("price")
+    price_range = props.get("priceRange")
+    if price or price_range:
+        value = price or price_range
+        out["price"] = {"value": value, "currency": props.get("priceCurrency") or None,
+                        "isRange": bool(price_range) or "-" in value or "–" in value}
     if props.get("ratingValue") or props.get("reviewCount"):
         out["rating"] = {
             "value": _as_float(props.get("ratingValue")),
@@ -394,7 +397,7 @@ def _from_heuristic(soup: BeautifulSoup) -> dict | None:
 
 # -- Entry point ------------------------------------------------------------
 
-def extract_structured(html: str, summary: dict | None = None) -> dict | None:
+def extract_structured(html: str) -> dict | None:
     """Best-effort structured entity extraction. Never raises; None on no signals."""
     if not html:
         return None

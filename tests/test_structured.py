@@ -124,3 +124,17 @@ def test_listing_entity_itemcount():
     assert s["source"] == "jsonld"
     assert s["entityType"] == "listing"
     assert s["itemCount"] == 2
+
+
+def test_jsonld_graph_flattening():
+    html = ('<script type="application/ld+json">'
+            '{"@context":"https://schema.org","@graph":['
+            '{"@type":"LocalBusiness","name":"Estudio Alba","aggregateRating":{"@type":"AggregateRating","ratingValue":"4.6","reviewCount":"54"}},'
+            '{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Inicio"},{"@type":"ListItem","position":2,"name":"Fotógrafos"}]}'
+            ']}</script>')
+    s = extract_structured(html)
+    assert s["source"] == "jsonld"
+    assert s["entityType"] == "profile"
+    assert s["name"] == "Estudio Alba"
+    assert s["rating"]["value"] == 4.6
+    assert s["category"] == "Inicio > Fotógrafos"
