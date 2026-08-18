@@ -1,0 +1,52 @@
+{
+  "planPath": "docs/superpowers/plans/2026-08-18-server-mode-structured.md",
+  "tasks": [
+    {
+      "id": 0,
+      "subject": "Task 0: Baseline check",
+      "status": "completed",
+      "description": "**Goal:** Confirm the 24 existing tests pass before any change.\n\n**Verify:** `uv run pytest tests/ -q` → `24 passed`\n\n```json:metadata\n{\"files\": [], \"verifyCommand\": \"uv run pytest tests/ -q\", \"acceptanceCriteria\": [\"24 passed\"]}\n```"
+    },
+    {
+      "id": 1,
+      "subject": "Task 1: structured.py extractor + heuristic selectors + unit tests",
+      "status": "completed",
+      "description": "**Goal:** A pure, fail-open structured extractor over raw HTML, with tunable heuristic selectors in `config.py`.\n\n**Files:**\n- Create: `src/growth_scraper/structured.py`\n- Modify: `src/growth_scraper/config.py`\n- Test: `tests/test_structured.py`\n\n**Acceptance Criteria:**\n- `extract_structured(html)` returns dict with entityType/source/name/description/image/price/rating/reviews(cap 3)/category/contact/itemCount\n- Source priority JSON-LD > microdata > meta > heuristic\n- Never raises; empty/broken/no-signal → None\n- Config exposes STRUCTURED_*_SELECTORS + STRUCTURED_MAX_JSONLD_BYTES\n\n**Verify:** `uv run pytest tests/test_structured.py -q` → all pass\n\n```json:metadata\n{\"files\": [\"src/growth_scraper/structured.py\", \"src/growth_scraper/config.py\", \"tests/test_structured.py\"], \"verifyCommand\": \"uv run pytest tests/test_structured.py -q\", \"acceptanceCriteria\": [\"extract_structured unit tests pass\", \"source priority enforced\", \"fail-open on empty/broken HTML\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Wire structured into record, summary triage + CSV, fixture routes + e2e tests",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** Every record exposes `structured`; `summary` gets cheap triage fields; the CSV mirrors them; fixture pages + e2e tests prove it through the browser.\n\n**Files:**\n- Modify: `src/growth_scraper/pipeline.py`, `src/growth_scraper/config.py`, `src/growth_scraper/records.py`\n- Modify: `tests/fixtureserver.py`\n- Test: `tests/test_structured.py`\n\n**Acceptance Criteria:**\n- `record.structured` populated for fixture pages\n- summary has structuredSource/Price/RatingValue/ReviewCount/Category when structured exists, absent when not\n- CSV header + rows include the 5 structured* columns\n- Existing 24 tests still green\n\n**Verify:** `uv run pytest tests/ -q` → 24 old + new pass\n\n```json:metadata\n{\"files\": [\"src/growth_scraper/pipeline.py\", \"src/growth_scraper/config.py\", \"src/growth_scraper/records.py\", \"tests/fixtureserver.py\", \"tests/test_structured.py\"], \"verifyCommand\": \"uv run pytest tests/ -q\", \"acceptanceCriteria\": [\"record.structured populated\", \"summary triage fields\", \"CSV structured* columns\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Per-run ScrapeConfig in Pipeline.run_one (concurrency-safe)",
+      "status": "completed",
+      "description": "**Goal:** `run_one` accepts an optional per-run `ScrapeConfig` so the server can serve concurrent requests with different options without mutating shared state.\n\n**Files:**\n- Modify: `src/growth_scraper/pipeline.py`\n\n**Acceptance Criteria:**\n- run_one(url, crawled_from=None, cfg=None) uses passed cfg everywhere\n- Hooks read consent/expand/apis from session cfg\n- Cached records return with fromCache=True\n- Existing 24 tests still green\n\n**Verify:** `uv run pytest tests/ -q` → all green\n\n```json:metadata\n{\"files\": [\"src/growth_scraper/pipeline.py\"], \"verifyCommand\": \"uv run pytest tests/ -q\", \"acceptanceCriteria\": [\"per-run cfg respected\", \"hooks use session cfg\", \"fromCache set on cache hit\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: gscrape serve — warm-browser HTTP server + endpoint tests",
+      "status": "completed",
+      "blockedBy": [3],
+      "description": "**Goal:** `gscrape serve` runs a FastAPI server on 127.0.0.1 with a warm crawler; `POST /scrape` returns a full record; cache fast-path and token support included.\n\n**Files:**\n- Create: `src/growth_scraper/server.py`\n- Modify: `src/growth_scraper/cli.py`, `pyproject.toml`\n- Test: `tests/test_server.py`\n\n**Acceptance Criteria:**\n- gscrape serve dispatches before URL parsing\n- GET /health → status ok + version\n- POST /scrape → record; blocked/error in record (200); invalid body/non-http → 400\n- Cache fast-path with fromCache:true, no re-hit\n- Token → 401 on missing/wrong bearer\n- fastapi/uvicorn/httpx declared\n\n**Verify:** `uv sync` ok; `uv run pytest tests/test_server.py -q` → all pass\n\n```json:metadata\n{\"files\": [\"src/growth_scraper/server.py\", \"src/growth_scraper/cli.py\", \"pyproject.toml\", \"tests/test_server.py\"], \"verifyCommand\": \"uv run pytest tests/test_server.py -q\", \"acceptanceCriteria\": [\"health endpoint\", \"scrape returns record\", \"cache fast-path\", \"token 401\", \"400 on invalid body\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: Hybrid orpheus.sh (server first, spawn fallback) + scenario-server.sh",
+      "status": "completed",
+      "blockedBy": [4],
+      "description": "**Goal:** `orpheus.sh` tries `POST /scrape` on the local server first; if unreachable/invalid, falls back to spawning `uv run gscrape`. Exit-0/text contract unchanged.\n\n**Files:**\n- Modify: `~/.claude/scripts/orpheus.sh` (outside repo)\n- Create: `scripts/scenario-server.sh`\n\n**Acceptance Criteria:**\n- Live server → text via HTTP, exit 0\n- Server down / GSCRAPE_SKIP_SERVER=1 → same text via spawn\n- --out writes JSONL in both paths\n- Blocked/error record → exit 1 + stderr, no spawn retry\n- `--` flags force spawn\n- scenario-server.sh validates warm/cache/fallback\n\n**Verify:** `bash scripts/scenario-server.sh` → PASS (live)\n\n```json:metadata\n{\"files\": [\"scripts/scenario-server.sh\"], \"verifyCommand\": \"bash scripts/scenario-server.sh\", \"acceptanceCriteria\": [\"warm path via server\", \"fallback to spawn\", \"scenario 6 PASS\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: Docs (README + AGENTS) + final verification",
+      "status": "completed",
+      "blockedBy": [1, 2, 3, 4, 5],
+      "description": "**Goal:** Document `serve`, `structured`, and the hybrid wrapper; run the full verification battery.\n\n**Files:**\n- Modify: `README.md`, `AGENTS.md`\n\n**Acceptance Criteria:**\n- README documents serve, structured field, wrapper behavior\n- AGENTS.md has module rows, D25-D29, updated test counts\n- Full verification battery passes\n\n**Verify:** `uv run pytest tests/ -q`, `bash scripts/fixture-check.sh`, (live) `bash scripts/scenario-server.sh` → all PASS\n\n```json:metadata\n{\"files\": [\"README.md\", \"AGENTS.md\"], \"verifyCommand\": \"uv run pytest tests/ -q && bash scripts/fixture-check.sh\", \"acceptanceCriteria\": [\"docs updated\", \"full battery green\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-08-18T18:15:00+00:00"
+}
