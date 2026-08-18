@@ -290,7 +290,7 @@ class Pipeline:
 
         # local record cache
         if cfg.cache_dir and not crawled_from:
-            cached = self._cache_read(url)
+            cached = self._cache_read(url, cfg.cache_dir)
             if cached is not None:
                 cached.crawledFrom = crawled_from
                 cached.fromCache = True
@@ -391,7 +391,7 @@ class Pipeline:
                 record.images = await _download_images(url, img_urls, _images_dir(cfg.export_images))
 
         if cfg.cache_dir:
-            self._cache_write(url, record)
+            self._cache_write(url, record, cfg.cache_dir)
         return record
 
     # -- link discovery for crawl mode ----------------------------------------
@@ -415,13 +415,13 @@ class Pipeline:
         return list(dict.fromkeys(hrefs))
 
     # -- local record cache (scenario 5: second run must not reprocess) -------
-    def _cache_path(self, url: str) -> str:
+    def _cache_path(self, url: str, cache_dir: str | None = None) -> str:
         digest = hashlib.sha1(url.encode()).hexdigest()[:24]
-        return os.path.join(self.cfg.cache_dir, f"record-{digest}.json")
+        return os.path.join(cache_dir or self.cfg.cache_dir, f"record-{digest}.json")
 
-    def _cache_read(self, url: str) -> Record | None:
+    def _cache_read(self, url: str, cache_dir: str | None = None) -> Record | None:
         try:
-            path = self._cache_path(url)
+            path = self._cache_path(url, cache_dir)
             if not os.path.exists(path):
                 return None
             with open(path, "r", encoding="utf-8") as f:
@@ -431,10 +431,10 @@ class Pipeline:
         except Exception:
             return None
 
-    def _cache_write(self, url: str, record: Record) -> None:
+    def _cache_write(self, url: str, record: Record, cache_dir: str | None = None) -> None:
         try:
-            os.makedirs(self.cfg.cache_dir, exist_ok=True)
-            with open(self._cache_path(url), "w", encoding="utf-8") as f:
+            os.makedirs(cache_dir or self.cfg.cache_dir, exist_ok=True)
+            with open(self._cache_path(url, cache_dir), "w", encoding="utf-8") as f:
                 json.dump(record.to_dict(), f, ensure_ascii=False)
         except Exception:
             pass
