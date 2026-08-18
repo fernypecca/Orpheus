@@ -156,6 +156,77 @@ def build_pages() -> dict:
             "Con imagen",
             '<h1>Con imagen</h1><img src="/img.png" alt="test"><img data-src="/img2.png" alt="lazy">',
         ),
+        "/structured-jsonld": page(
+            "Fotografía Luna",
+            """
+            <h1>Fotografía Luna</h1>
+            <script type="application/ld+json">
+            {
+              "@context": "https://schema.org",
+              "@type": "LocalBusiness",
+              "name": "Fotografía Luna",
+              "description": "Fotógrafo de bodas en Madrid con 12 años de experiencia.",
+              "priceRange": "€€",
+              "telephone": "+34 610 000 111",
+              "email": "hola@luna.example.com",
+              "aggregateRating": {"@type": "AggregateRating", "ratingValue": "4.9", "bestRating": "5", "reviewCount": "127"},
+              "review": [
+                {"@type": "Review", "author": {"@type": "Person", "name": "María"}, "reviewRating": {"@type": "Rating", "ratingValue": "5"}, "reviewBody": "Un equipo maravilloso."},
+                {"@type": "Review", "author": {"@type": "Person", "name": "Juan"}, "reviewRating": {"@type": "Rating", "ratingValue": "5"}, "reviewBody": "Fotos espectaculares."},
+                {"@type": "Review", "author": {"@type": "Person", "name": "Ana"}, "reviewRating": {"@type": "Rating", "ratingValue": "4"}, "reviewBody": "Muy profesionales."},
+                {"@type": "Review", "author": {"@type": "Person", "name": "Luis"}, "reviewRating": {"@type": "Rating", "ratingValue": "5"}, "reviewBody": "Repetiremos sin duda."},
+                {"@type": "Review", "author": {"@type": "Person", "name": "Sara"}, "reviewRating": {"@type": "Rating", "ratingValue": "5"}, "reviewBody": "Recomendadísimos."}
+              ]
+            }
+            </script>
+            <p>Contenido visible de la página.</p>
+            """,
+        ),
+        "/structured-microdata": page(
+            "Floristería Primavera",
+            """
+            <h1>Floristería Primavera</h1>
+            <div itemscope itemtype="https://schema.org/LocalBusiness">
+              <meta itemprop="name" content="Floristería Primavera">
+              <meta itemprop="description" content="Flores para bodas en Valencia.">
+              <meta itemprop="priceRange" content="€€€">
+              <div itemprop="aggregateRating" itemscope itemtype="https://schema.org/AggregateRating">
+                <meta itemprop="ratingValue" content="4.7">
+                <meta itemprop="bestRating" content="5">
+                <meta itemprop="reviewCount" content="88">
+              </div>
+              <span itemprop="telephone">+34 963 000 222</span>
+              <div itemprop="address" itemscope itemtype="https://schema.org/PostalAddress">
+                <meta itemprop="streetAddress" content="Calle Flor 2">
+                <meta itemprop="addressLocality" content="Valencia">
+              </div>
+            </div>
+            """,
+        ),
+        "/structured-meta": page(
+            "Banquete Azahar",
+            """
+            <meta property="og:title" content="Banquete Azahar">
+            <meta property="og:description" content="Banquetes de boda en Sevilla.">
+            <meta property="og:image" content="https://cdn.example.com/azahar.jpg">
+            <meta name="description" content="Banquetes de boda en Sevilla.">
+            <meta name="price" content="€80–€120">
+            <meta name="currency" content="EUR">
+            <h1>Banquete Azahar</h1>
+            """,
+        ),
+        "/structured-heuristic": page(
+            "Música en Directo",
+            """
+            <h1>Música en Directo</h1>
+            <div class="price">€600–€900</div>
+            <div class="rating" data-rating="4.8">4.8</div>
+            <span class="review-count">34</span>
+            <nav class="breadcrumb"><a href="/">Inicio</a> <a href="/musica">Música</a> <a href="/dj">DJ</a></nav>
+            <p>Contacto: dj@ejemplo.com</p>
+            """,
+        ),
+        "/structured-none": page("Página plana", "<h1>Página plana</h1><p>Sin datos estructurados.</p>"),
     }
 
 

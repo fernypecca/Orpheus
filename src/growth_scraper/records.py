@@ -44,6 +44,8 @@ class CsvWriter:
     HEADERS = [
         "url", "title", "pageType", "domain", "metaDescription", "h1",
         "wordCount", "itemCount", "statusCode", "error", "text_preview",
+        "structuredSource", "structuredPrice", "structuredRatingValue",
+        "structuredReviewCount", "structuredCategory",
     ]
 
     def __init__(self, path: str):
@@ -67,6 +69,11 @@ class CsvWriter:
             record.statusCode or "",
             record.error or "",
             preview,
+            s.get("structuredSource", ""),
+            s.get("structuredPrice", ""),
+            s.get("structuredRatingValue", ""),
+            s.get("structuredReviewCount", ""),
+            s.get("structuredCategory", ""),
         ])
         self._fh.flush()
 

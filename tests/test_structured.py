@@ -1,5 +1,7 @@
 """Unit tests for the structured extractor (pure HTML parsing, no browser)."""
 
+from conftest import base_cfg, run, scrape_url
+
 from growth_scraper.structured import extract_structured
 
 JSONLD_HTML = '''<!doctype html><html><head><title>Fotografía Luna</title>
@@ -138,3 +140,54 @@ def test_jsonld_graph_flattening():
     assert s["name"] == "Estudio Alba"
     assert s["rating"]["value"] == 4.6
     assert s["category"] == "Inicio > Fotógrafos"
+
+
+def test_e2e_jsonld_through_browser(fs):
+    rec = run(scrape_url(base_cfg(), fs.url("/structured-jsonld")))
+    s = rec.structured
+    assert s["source"] == "jsonld"
+    assert s["entityType"] == "profile"
+    assert s["name"] == "Fotografía Luna"
+    assert s["rating"]["count"] == 127
+    assert len(s["reviews"]) == 3
+    assert rec.summary["structuredRatingValue"] == 4.9
+    assert rec.summary["structuredReviewCount"] == 127
+    assert rec.summary["structuredSource"] == "jsonld"
+
+
+def test_e2e_microdata_through_browser(fs):
+    rec = run(scrape_url(base_cfg(), fs.url("/structured-microdata")))
+    s = rec.structured
+    assert s["source"] == "microdata"
+    assert s["price"]["value"] == "€€€"
+    assert s["contact"]["address"]["locality"] == "Valencia"
+
+
+def test_e2e_heuristic_through_browser(fs):
+    rec = run(scrape_url(base_cfg(), fs.url("/structured-heuristic")))
+    s = rec.structured
+    assert s["source"] == "heuristic"
+    assert s["price"]["value"] == "€600–€900"
+    assert rec.summary["structuredPrice"] == "€600–€900"
+
+
+def test_e2e_no_signals_structured_none(fs):
+    rec = run(scrape_url(base_cfg(), fs.url("/structured-none")))
+    assert rec.structured is None
+    assert "structuredSource" not in rec.summary
+
+
+def test_csv_structured_columns(fs, tmp_path):
+    from growth_scraper.cli import main
+
+    out = tmp_path / "cli.jsonl"
+    code = main([fs.url("/structured-jsonld"), "-o", str(out), "--csv",
+                 "--delay", "0", "--jitter", "0"])
+    assert code == 0
+    csv_path = tmp_path / "cli.csv"
+    header = csv_path.read_text().splitlines()[0]
+    assert "structuredSource" in header
+    assert "structuredRatingValue" in header
+    row = csv_path.read_text().splitlines()[1]
+    assert "Fotografía Luna" in row
+    assert "jsonld" in row

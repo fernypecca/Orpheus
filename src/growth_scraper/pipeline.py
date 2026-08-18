@@ -13,6 +13,7 @@ from urllib.parse import urljoin, urlparse
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CacheMode, CrawlerRunConfig
 
 from . import apipage, extractors, protection
+from .structured import extract_structured
 from .clickguard import GUARD_JS
 from .config import ROBOTS_UA_TOKEN, ScrapeConfig, Record
 from .consent import handle_consent
@@ -137,7 +138,8 @@ def _title_from_result(result) -> str:
     return ""
 
 
-def _build_summary(url: str, title: str, page_type: str, items: list, text: str, html: str) -> dict:
+def _build_summary(url: str, title: str, page_type: str, items: list, text: str, html: str,
+                   structured: dict | None = None) -> dict:
     """Cheap structured triage fields so growth marketers can filter before the LLM."""
     host = (urlparse(url).hostname or "").lower().removeprefix("www.")
     meta, h1 = "", ""
@@ -154,7 +156,7 @@ def _build_summary(url: str, title: str, page_type: str, items: list, text: str,
                 h1 = " ".join(h.get_text(" ", strip=True).split())
         except Exception:
             pass
-    return {
+    result = {
         "domain": host,
         "title": title,
         "metaDescription": meta,
@@ -163,6 +165,15 @@ def _build_summary(url: str, title: str, page_type: str, items: list, text: str,
         "itemCount": len(items),
         "pageType": page_type,
     }
+    if structured:
+        price = structured.get("price") or {}
+        rating = structured.get("rating") or {}
+        result["structuredSource"] = structured.get("source")
+        result["structuredPrice"] = price.get("value")
+        result["structuredRatingValue"] = rating.get("value")
+        result["structuredReviewCount"] = rating.get("count")
+        result["structuredCategory"] = structured.get("category")
+    return result
 
 
 class Pipeline:
@@ -350,7 +361,8 @@ class Pipeline:
         if result.cleaned_html or result.html:
             record.pageType, record.items = extractors.run_extraction(result)
 
-        record.summary = _build_summary(url, record.title, record.pageType, record.items, record.text, raw_html)
+        record.structured = extract_structured(raw_html)
+        record.summary = _build_summary(url, record.title, record.pageType, record.items, record.text, raw_html, record.structured)
 
         # P0/P1: API responses + pagination replay (deduped by URL)
         if self.cfg.capture_apis and used_session is not None:

@@ -206,6 +206,8 @@ class Record:
     statusCode: Optional[int] = None
     protectionBlocked: bool = False
     rawHtml: Optional[str] = None
+    structured: Optional[dict] = None
+    fromCache: bool = False
 
     def to_dict(self) -> dict:
         d = {
@@ -222,9 +224,12 @@ class Record:
             "scrapedAt": self.scrapedAt,
             "statusCode": self.statusCode,
             "protectionBlocked": self.protectionBlocked,
+            "structured": self.structured,
         }
         # Opt-in (--raw-html): unprocessed HTML, for consumers that need what
         # Crawl4AI's cleaning strips (e.g. inline JSON <script> blocks).
         if self.rawHtml is not None:
             d["rawHtml"] = self.rawHtml
+        if self.fromCache:
+            d["fromCache"] = True
         return d
