@@ -45,7 +45,8 @@ class ScrapeRequest(BaseModel):
 
 def check_token(token: str | None, authorization: str | None) -> None:
     """Raise HTTPException 401 when the server is token-protected and the
-    request does not carry the right bearer token."""
+    request does not carry the right bearer token. When token is None, no
+    authentication is enforced (open mode)."""
     if token and authorization != f"Bearer {token}":
         raise HTTPException(status_code=401, detail="invalid or missing token")
 
@@ -98,7 +99,8 @@ def create_app(base_cfg: ScrapeConfig, max_concurrency: int = 4, token: str | No
         if o.cacheDir:
             cfg.cache_dir = o.cacheDir
         cfg.raw_html = o.rawHtml
-        assert pipeline is not None and sem is not None
+        if pipeline is None or sem is None:
+            raise HTTPException(status_code=500, detail="server not initialized")
         try:
             async with sem:
                 record = await pipeline.run_one(url, cfg=cfg)
