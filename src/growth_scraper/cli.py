@@ -81,6 +81,11 @@ def _collect_urls(args) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "serve":
+        from .server import serve_main
+
+        return serve_main(argv[1:])
     args = build_parser().parse_args(argv)
     urls = _collect_urls(args)
     if not urls and args.sitemap is None:
