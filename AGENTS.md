@@ -27,6 +27,8 @@ de pago, corre en local.
 | `crawl.py` | BFS mismo-dominio con tope. Descubrimiento de links desde el HTML crudo. **Workers concurrentes** (`--concurrency`, robots + pacing por dominio respetados). |
 | `urlutil.py` | Normalización de URLs: quita `utm_*`/fbclid/gclid/params de sesión → dedupe y cache limpios. |
 | `sitemap.py` | Seed desde sitemap (`--sitemap`): index/urlset, namespace-aware, filtrado por robots, cap. |
+| `server.py` | FastAPI + uvicorn: `gscrape serve`, single warm `AsyncWebCrawler`, `POST /scrape`, cache fast-path, `--token`. Binds 127.0.0.1. |
+| `structured.py` | P2: entidades estructuradas (JSON-LD → microdata → meta/OG → heurística), fail-open, campo `structured` + triage en `summary`/CSV. |
 
 `tests/` corre contra un **fixture server local** (`fixtureserver.py`), no
 necesita internet. `scripts/` tiene los 5 escenarios + `fixture-check.sh`.
@@ -116,6 +118,17 @@ necesita internet. `scripts/` tiene los 5 escenarios + `fixture-check.sh`.
   y descarga con httpx. Verificado live en www.python.org.
 - **D24 — Hotlink protection real.** Wikipedia (upload.wikimedia.org) responde
   403 a todo (con y sin Referer) — limitación inherente del host, documentada.
+- **D25 — uvicorn es dueño del event loop.** El server no llama `asyncio.run` por
+  request; el crawler se crea/cierra en el lifespan de la app (compatible con D7).
+- **D26 — Sesión por request** (D18) en server mode. Cada `POST /scrape` crea su
+  `Session` y hace `kill_session` al terminar, aunque falle.
+- **D27 — 200 siempre que el scrape corra.** `protectionBlocked`/`error` viven en el
+  record (igual que CLI). Errores de contrato/transporte → 400 (body inválido) o 500.
+- **D28 — `structured` fail-open.** Cualquier error o HTML sin señales → `structured:
+  null`. Nunca rompe el record. `source` = primera fuente con ≥1 campo (jsonld >
+  microdata > meta > heuristic).
+- **D29 — Server single-URL y solo loopback.** SSRF documentado; `--token` opcional.
+  `orpheus.sh` intenta el server primero y cae a spawn si no responde.
 
 ## Estado de los "problemas conocidos" del brief
 
@@ -173,9 +186,10 @@ scripts/fixture-check.sh
 
 ## Evidencia (output real, no "debería funcionar")
 
-`uv run pytest tests/ -q` → **24 passed** (13 base + normalización, dedupe de
-tracking, crawl concurrente, sitemap, cap de texto, retry 5xx, summary, CSV,
-fail-closed stall, export de imágenes).
+`uv run pytest tests/ -q` → **24 + structured + server tests en verde** (13 base +
+normalización, dedupe de tracking, crawl concurrente, sitemap, cap de texto, retry 5xx,
+summary, CSV, fail-closed stall, export de imágenes, extracción estructurada, e2e
+server mode).
 
 ### Validación live (con internet disponible, jun 2026)
 
@@ -191,6 +205,9 @@ fail-closed stall, export de imágenes).
   El fail-closed se prueba determinista en el fixture: `/blocked` →
   `PROTECTION_BLOCKED` con texto vacío.
 - **Escenario 5** (`python.org`, cache) → PASS. La 2ª corrida salió del cache.
+- **Escenario 6 (server mode)** (`scripts/scenario-server.sh`, `python.org`) →
+  PASS. Warm path (782 chars) vía `gscrape serve`, cache fast-path idéntico, y
+  fallback a spawn con el mismo texto. Verificado live.
 - **Sitemap + crawl live** (`--sitemap https://www.bbc.com/sitemap.xml
   --crawl --max-pages 3 --concurrency 2`) → PASS. Sitemapindex real seguido,
   3 records con `--max-text-chars 800` respetado y CSV con 4 filas.

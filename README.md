@@ -80,6 +80,50 @@ The downstream `llm-batch.py` reads `--jsonl-field text` — the field name is
 **`text`**, unchanged. `summary` gives you cheap triage fields to filter before
 sending anything to an LLM, and `--csv` mirrors them to a spreadsheet.
 
+Records also carry a `structured` field (best-effort, fail-open) extracted from
+schema.org JSON-LD, microdata, meta/OG, or heuristic selectors:
+
+```json
+"structured": {
+  "entityType": "profile",
+  "source": "jsonld",
+  "name": "Fotografía Luna",
+  "price": {"value": "€€", "currency": null, "isRange": true},
+  "rating": {"value": 4.9, "best": 5, "count": 127},
+  "reviews": [{"author": "María", "rating": 5, "text": "..."}],
+  "category": null,
+  "contact": {"phone": "...", "email": "...", "website": "...", "address": {...}},
+  "itemCount": null
+}
+```
+
+`summary` mirrors the cheap triage fields (`structuredSource`, `structuredPrice`,
+`structuredRatingValue`, `structuredReviewCount`, `structuredCategory`) and `--csv`
+adds them as columns.
+
+## Server mode (warm browser)
+
+For consumers that scrape many URLs in a row (the TS wrappers via `orpheus.sh`),
+run a persistent server instead of spawning a cold process per URL:
+
+```bash
+uv run gscrape serve                # 127.0.0.1:8743
+uv run gscrape serve --port 9000 --cache-dir .cache --token secret
+```
+
+- `GET /health` → `{"status": "ok", "version": "..."}`
+- `POST /scrape` → `{"url": "...", "options": {...}}` → the same record shape as the CLI.
+  Options: `maxTextChars`, `fitText`, `ignoreRobots`, `noConsent`, `noExpand`, `noApis`,
+  `maxRetries`, `maxApiResponses`, `cacheDir`, `rawHtml`.
+- With `--cache-dir` (server or per-request `cacheDir`), a cached URL returns
+  immediately with `"fromCache": true`.
+- Optional `--token` (send `Authorization: Bearer <token>`). Binds to 127.0.0.1 only —
+  do not expose publicly (SSRF).
+
+The wrapper `orpheus.sh` uses the server automatically and falls back to spawning
+`uv run gscrape` when the server is not running (set `GSCRAPE_SKIP_SERVER=1` to force
+the spawn path). The exit-0/text contract is unchanged.
+
 ## CLI
 
 | Flag | Default | Meaning |
@@ -127,7 +171,7 @@ sending anything to an LLM, and `--csv` mirrors them to a spreadsheet.
   that lives behind an internal API (not the DOM) is still captured in
   `apiResponses`.
 
-## The 5 test scenarios
+## The test scenarios
 
 ```bash
 # 1. Simple site → well-formed JSONL
@@ -144,6 +188,9 @@ scripts/scenario4-blocked.sh                 # e.g. https://nowsecure.nl
 
 # 5. Cache → second run doesn't reprocess
 scripts/scenario5-cache.sh                   # --cache-dir
+
+# 6. Server mode: warm path, cache fast-path, spawn fallback
+scripts/scenario-server.sh                   # gscrape serve + orpheus.sh
 
 # Offline deterministic version of all 5 (local fixture server, no internet):
 scripts/fixture-check.sh
