@@ -238,6 +238,20 @@ lee nuestro campo `text` y procesa el lote real contra Groq/NVIDIA (claves en
 (Nemotron). Nota: páginas grandes (wikipedia, ~60KB) exceden el TPM de tiers
 bajos → para producción, recortar `text` o usar modelos con TPM alto.
 
+### Consumo downstream (wrappers estandarizados)
+
+Regla global: **Orpheus first, Firecrawl fallback** — no reinventar el shell-out.
+
+- Shell universal: `~/.claude/scripts/orpheus.sh <url> [--max-chars N] [--out FILE] [-- <flags>]`
+  → texto limpio en stdout, exit 0; exit 1 + mensaje en stderr (caer a Firecrawl).
+  Usa `ORPHEUS_DIR` (default `~/.claude/scripts/growth-scraper`), `ORPHEUS_TIMEOUT_S`
+  y `GSCRAPE_PORT`; server mode primero, fallback a spawn.
+- TS: `tryOrpheus(url, maxChars)` en `lib/orpheus.ts` (shell-out vía `ORPHEUS_DIR`
+  o hosted vía `ORPHEUS_URL`). Null = fail-closed, el caller cae al siguiente tier.
+- No aplica a: APIs JSON/XML (RSS, Meta GraphQL) — usar `fetch`; sitios protegidos
+  (Meta Ad Library) — usar Playwright. CLIs conocidos: G2 (Cloudflare),
+  Trustpilot/Google News (robots.txt).
+
 ### Bugs reales cazados en la validación live
 
 - `remove_overlay_elements=True` → Wikipedia vaciaba (D13).
