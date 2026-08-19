@@ -101,6 +101,22 @@ schema.org JSON-LD, microdata, meta/OG, or heuristic selectors:
 `structuredRatingValue`, `structuredReviewCount`, `structuredCategory`) and `--csv`
 adds them as columns.
 
+### Output enriquecido (Fase 3)
+
+Cada record añade tres cosas sobre el output base:
+
+- **`meta`** — shape estable (keys con `null` si ausentes): `canonical`,
+  `ogTitle`, `ogDescription`, `ogImage`, `twitterCard`, `author`, `publishedAt`,
+  `favicon`. Las URLs relativas se resuelven contra la URL de la página.
+- **`summary.language`** — código ISO 639-1 detectado con heurística sin
+  dependencias (`<html lang>` → `content-language` → stopwords). Solo aparece
+  cuando se detecta con confianza.
+- **`screenshots`** — rutas a PNG full-page capturados con `--screenshots DIR`
+  (puntero multimodal, igual que `--export-images`). Solo CLI: el server mode
+  nunca escribe a disco.
+
+La columna `language` también aparece en el CSV cuando usas `--csv`.
+
 ## Server mode (warm browser)
 
 For consumers that scrape many URLs in a row (the TS wrappers via `orpheus.sh`),

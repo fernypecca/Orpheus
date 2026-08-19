@@ -29,6 +29,8 @@ de pago, corre en local.
 | `sitemap.py` | Seed desde sitemap (`--sitemap`): index/urlset, namespace-aware, filtrado por robots, cap. |
 | `server.py` | FastAPI + uvicorn: `gscrape serve`, single warm `AsyncWebCrawler`, `POST /scrape`, cache fast-path, `--token`. Binds 127.0.0.1. |
 | `structured.py` | P2: entidades estructuradas (JSON-LD → microdata → meta/OG → heurística), fail-open, campo `structured` + triage en `summary`/CSV. |
+| `meta.py` | Idioma (ISO 639-1, heurística sin deps, fail-open) + metadata rica (`meta`: canonical, OG, twitter, author, publishedAt, favicon) |
+| `screenshot.py` | Screenshot full-page CLI-only (`--screenshots DIR`), campo `screenshots` con rutas |
 
 `tests/` corre contra un **fixture server local** (`fixtureserver.py`), no
 necesita internet. `scripts/` tiene los 5 escenarios + `fixture-check.sh`.
@@ -129,6 +131,10 @@ necesita internet. `scripts/` tiene los 5 escenarios + `fixture-check.sh`.
   microdata > meta > heuristic).
 - **D29 — Server single-URL y solo loopback.** SSRF documentado; `--token` opcional.
   `orpheus.sh` intenta el server primero y cae a spawn si no responde.
+- **D30** — Idioma fail-open sin dependencias: `<html lang>` → `content-language` → stopwords (texto ≥80 palabras, ratio ≥0.05, margen 1.5×). Sin señal → `None`.
+- **D31** — `meta` es un campo de shape estable (keys con `null`), separado del triage de `summary` (solo `language` ahí y en CSV).
+- **D32** — Screenshots solo CLI (`--screenshots DIR`), PNG full-page en disco, campo puntero `screenshots`; el server nunca escribe a disco.
+- **D33** — Captura en `before_retrieve_html` (página viva y expandida); `session.screenshot_path` → `record.screenshots` solo en éxito.
 
 ## Estado de los "problemas conocidos" del brief
 
@@ -190,6 +196,8 @@ scripts/fixture-check.sh
 normalización, dedupe de tracking, crawl concurrente, sitemap, cap de texto, retry 5xx,
 summary, CSV, fail-closed stall, export de imágenes, extracción estructurada, e2e
 server mode).
+
+Fase 3 (output enriquecido): `uv run pytest tests/test_meta.py -q` → 16 passed (unit idioma/metadata, e2e `/meta-rich`, screenshot PNG, CSV `language`, CLI `--screenshots`).
 
 ### Validación live (con internet disponible, jun 2026)
 
