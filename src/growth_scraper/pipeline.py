@@ -14,6 +14,8 @@ from crawl4ai import AsyncWebCrawler, BrowserConfig, CacheMode, CrawlerRunConfig
 
 from . import apipage, extractors, protection
 from .structured import extract_structured
+from .meta import detect_language, extract_meta
+from .screenshot import capture_screenshot
 from .clickguard import GUARD_JS
 from .config import ROBOTS_UA_TOKEN, ScrapeConfig, Record
 from .consent import handle_consent
@@ -38,6 +40,7 @@ class Session:
         self.page_url = ""
         self.replayed: list[dict] = []
         self.cfg: "ScrapeConfig | None" = None
+        self.screenshot_path: str | None = None
 
 
 def _images_dir(base: str) -> str:
@@ -238,7 +241,7 @@ class Pipeline:
             emit_progress(cfg.verbose, f"after_goto probe failed for {url}: {exc}")
         return page
 
-    async def _hook_before_retrieve_html(self, page, context, config=None, **kwargs):
+    async def _hook_before_retrieve_html(self, page, context, url="", config=None, **kwargs):
         # P1: the page is alive here and has already fired its XHRs; replay any
         # paginated internal APIs so we capture more than the default load.
         session = self._session_for(config)
@@ -254,6 +257,13 @@ class Pipeline:
                     emit_progress(cfg.verbose, f"pagination replay: +{len(session.replayed)} responses")
             except Exception as exc:
                 emit_progress(cfg.verbose, f"pagination replay failed: {exc}")
+        # Fase 3: full-page screenshot (CLI-only) while the page is alive+expanded
+        if cfg.screenshot_dir and session.page:
+            session.screenshot_path = await capture_screenshot(
+                session.page, url or session.page_url, cfg.screenshot_dir
+            )
+            if session.screenshot_path:
+                emit_progress(cfg.verbose, f"screenshot: {session.screenshot_path}")
         return page
 
     async def start(self):
@@ -372,6 +382,12 @@ class Pipeline:
         record.structured = extract_structured(raw_html)
         record.summary = _build_summary(url, record.title, record.pageType, record.items, record.text, raw_html, record.structured)
 
+        # Fase 3: language triage + rich metadata
+        lang = detect_language(raw_html, record.text)
+        if lang:
+            record.summary["language"] = lang
+        record.meta = extract_meta(raw_html, url)
+
         # P0/P1: API responses + pagination replay (deduped by URL)
         if cfg.capture_apis and used_session is not None:
             seen_urls: set[str] = set()
@@ -389,6 +405,9 @@ class Pipeline:
             img_urls = _extract_image_urls(url, raw_html)
             if img_urls:
                 record.images = await _download_images(url, img_urls, _images_dir(cfg.export_images))
+
+        if used_session is not None and used_session.screenshot_path:
+            record.screenshots = [used_session.screenshot_path]
 
         if cfg.cache_dir:
             self._cache_write(url, record, cfg.cache_dir)

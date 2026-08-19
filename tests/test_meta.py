@@ -103,3 +103,27 @@ def test_record_to_dict_meta_screenshots():
     d = r.to_dict()
     assert d["meta"] == {"ogTitle": "X"}
     assert d["screenshots"] == ["/tmp/a.png"]
+
+
+def test_e2e_meta_rich_through_browser(fs):
+    from conftest import base_cfg, run, scrape_url
+
+    rec = run(scrape_url(base_cfg(), fs.url("/meta-rich")))
+    assert rec.meta["ogTitle"] == "Fotografía Alba"
+    assert rec.meta["canonical"] == fs.url("/fotografia-alba")
+    assert rec.meta["publishedAt"] == "2026-01-15T10:00:00Z"
+    assert rec.summary["language"] == "es"
+
+
+def test_e2e_screenshot_through_browser(fs, tmp_path):
+    import os
+
+    from conftest import base_cfg, run, scrape_url
+
+    cfg = base_cfg(screenshot_dir=str(tmp_path))
+    rec = run(scrape_url(cfg, fs.url("/meta-rich")))
+    assert rec.screenshots and len(rec.screenshots) == 1
+    p = rec.screenshots[0]
+    assert os.path.exists(p)
+    with open(p, "rb") as f:
+        assert f.read(4) == b"\x89PNG"

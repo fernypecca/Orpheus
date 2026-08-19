@@ -14,6 +14,7 @@ and don't depend on internet access:
   /private     robots-blocked page
   /blocked     403 + Cloudflare-style challenge
   /loop /loop2 /loop3   link graph for crawl-mode tests
+  /meta-rich    meta/language-rich page (Fase 3)
 """
 
 from __future__ import annotations
@@ -227,6 +228,18 @@ def build_pages() -> dict:
             """,
         ),
         "/structured-none": page("Página plana", "<h1>Página plana</h1><p>Sin datos estructurados.</p>"),
+        "/meta-rich": """<!doctype html><html lang="es"><head>
+<meta charset="utf-8">
+<title>Fotografía Alba</title>
+<meta property="og:title" content="Fotografía Alba">
+<meta property="og:description" content="Fotógrafa de bodas en Valencia.">
+<meta property="og:image" content="/img/alba.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="/fotografia-alba">
+<meta name="author" content="Alba Ruiz">
+<meta property="article:published_time" content="2026-01-15T10:00:00Z">
+<link rel="icon" href="/favicon.png">
+</head><body><h1>Fotografía Alba</h1><p>Fotografías de bodas con estilo documental.</p></body></html>""",
     }
 
 
