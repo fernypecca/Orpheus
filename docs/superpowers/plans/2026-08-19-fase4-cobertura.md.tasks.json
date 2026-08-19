@@ -1,0 +1,40 @@
+{
+  "planPath": "docs/superpowers/plans/2026-08-19-fase4-cobertura.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Config — Fase 4 knobs + record fields + to_dict",
+      "status": "pending",
+      "description": "**Goal:** New ScrapeConfig knobs, Record fields and unconditional to_dict serialization for Fase 4.\n\n**Files:**\n- Modify: `src/growth_scraper/config.py`\n- Test: `tests/test_coverage.py`\n\n**Acceptance Criteria:**\n- ScrapeConfig: consent_wait_ms=5000, fetch_frames=True, max_frames=5, anti_bot_retries=2, anti_bot_backoff_s=15.0\n- Record: frames/frameTexts=None, retries=0\n- to_dict emits frames/frameTexts/retries unconditionally\n\n**Verify:** `uv run pytest tests/test_coverage.py -q` → 2 passed\n\n```json:metadata\n{\"files\": [\"src/growth_scraper/config.py\", \"tests/test_coverage.py\"], \"verifyCommand\": \"uv run pytest tests/test_coverage.py -q\", \"acceptanceCriteria\": [\"ScrapeConfig knobs\", \"Record fields\", \"to_dict unconditional\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: waitcontent.py + consent hook wiring + e2e /gated",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** After a consent action, wait bounded for gated content so extraction sees the complete page.\n\n**Files:**\n- Create: `src/growth_scraper/waitcontent.py`\n- Modify: `src/growth_scraper/pipeline.py`\n- Modify: `tests/fixtureserver.py`\n- Test: `tests/test_coverage.py`\n\n**Acceptance Criteria:**\n- wait_for_content polls innerText ~500ms, plateau Δ<5% x2, cap consent_wait_ms, never raises\n- Hook calls it only when consent handler did something\n- e2e /gated: consent_wait_ms=3000 → record text contains late content\n\n**Verify:** `uv run pytest tests/test_coverage.py -q` → 3 passed\n\n```json:metadata\n{\"files\": [\"src/growth_scraper/waitcontent.py\", \"src/growth_scraper/pipeline.py\", \"tests/fixtureserver.py\", \"tests/test_coverage.py\"], \"verifyCommand\": \"uv run pytest tests/test_coverage.py -q\", \"acceptanceCriteria\": [\"wait_for_content bounded/fail-open\", \"hook wiring\", \"e2e gated content\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: iframes.py + wiring + e2e /frames",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** Report iframes (frames) and capture text of each src via polite GET (frameTexts).\n\n**Files:**\n- Create: `src/growth_scraper/iframes.py`\n- Modify: `src/growth_scraper/pipeline.py`\n- Modify: `tests/fixtureserver.py`\n- Test: `tests/test_coverage.py`\n\n**Acceptance Criteria:**\n- extract_iframes: src/title/crossOrigin, skips data/about/blob/empty, urljoin, cap max_frames, fail-open\n- fetch_frame_texts: polite GET, robots-respecting, concurrency 3, truncate 2000, fail-open per frame\n- run_one: record.frames + frameTexts when cfg.fetch_frames\n- e2e /frames: 2 frames (1 crossOrigin True), frameTexts has cross-origin text\n\n**Verify:** `uv run pytest tests/test_coverage.py -q` → 6 passed\n\n```json:metadata\n{\"files\": [\"src/growth_scraper/iframes.py\", \"src/growth_scraper/pipeline.py\", \"tests/fixtureserver.py\", \"tests/test_coverage.py\"], \"verifyCommand\": \"uv run pytest tests/test_coverage.py -q\", \"acceptanceCriteria\": [\"extract_iframes pure\", \"fetch_frame_texts polite\", \"run_one wiring\", \"e2e frames\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Anti-bot retry 403/429 + CSV retries + CLI flags + e2e",
+      "status": "pending",
+      "blockedBy": [3],
+      "description": "**Goal:** Retry 403/429 with hard cap and long backoff, record evidence, CSV column, CLI knobs.\n\n**Files:**\n- Modify: `src/growth_scraper/pipeline.py`\n- Modify: `src/growth_scraper/records.py`\n- Modify: `src/growth_scraper/cli.py`\n- Modify: `tests/fixtureserver.py`\n- Test: `tests/test_coverage.py`\n\n**Acceptance Criteria:**\n- attempts = 1 + max_retries + anti_bot_retries; retry 5xx (existing) and 403/429 (long backoff + jitter); record.retries = actual\n- robots disallowed: no retry\n- CSV header+row include retries\n- CLI: --no-frames, --consent-wait-ms, --anti-bot-retries, --anti-bot-backoff\n- e2e /flaky403?fails=2 succeeds retries==2; ?fails=999 blocked\n\n**Verify:** `uv run pytest tests/test_coverage.py -q` → 8 passed\n\n```json:metadata\n{\"files\": [\"src/growth_scraper/pipeline.py\", \"src/growth_scraper/records.py\", \"src/growth_scraper/cli.py\", \"tests/fixtureserver.py\", \"tests/test_coverage.py\"], \"verifyCommand\": \"uv run pytest tests/test_coverage.py -q\", \"acceptanceCriteria\": [\"403/429 retry con tope\", \"retries evidence\", \"CSV retries\", \"CLI flags\", \"e2e flaky403\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: Docs — README + AGENTS (D34-D36, evidencia)",
+      "status": "pending",
+      "blockedBy": [4],
+      "description": "**Goal:** Document Fase 4 output and record decisions/evidence.\n\n**Files:**\n- Modify: `README.md`\n- Modify: `AGENTS.md`\n\n**Acceptance Criteria:**\n- README: gated wait, frames/frameTexts, retries\n- AGENTS: module rows waitcontent.py/iframes.py, D34-D36, evidence\n- No placeholders\n\n**Verify:** `git show --stat HEAD` → only 2 files\n\n```json:metadata\n{\"files\": [\"README.md\", \"AGENTS.md\"], \"verifyCommand\": \"git show --stat HEAD\", \"acceptanceCriteria\": [\"README cobertura\", \"AGENTS modules + D34-D36 + evidence\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-08-19T00:00:00Z"
+}
