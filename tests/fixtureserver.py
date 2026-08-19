@@ -15,6 +15,7 @@ and don't depend on internet access:
   /blocked     403 + Cloudflare-style challenge
   /loop /loop2 /loop3   link graph for crawl-mode tests
   /meta-rich    meta/language-rich page (Fase 3)
+  /gated        consent wall that gates content until rejected (Fase 4)
 """
 
 from __future__ import annotations
@@ -240,6 +241,30 @@ def build_pages() -> dict:
 <meta property="article:published_time" content="2026-01-15T10:00:00Z">
 <link rel="icon" href="/favicon.png">
 </head><body><h1>Fotografía Alba</h1><p>Fotografías de bodas con estilo documental.</p></body></html>""",
+        "/gated": """<!doctype html><html><head><meta charset="utf-8"><title>Pagina con consent</title></head>
+<body>
+<div id="onetrust-consent-sdk">
+  <div class="onetrust-banner">
+    <button id="onetrust-reject-all-handler">Reject</button>
+    <button id="onetrust-accept-btn-handler">Accept</button>
+  </div>
+</div>
+<h1>Pagina con consent</h1>
+<p>Contenido inicial visible de la pagina con consentimiento.</p>
+<div id="gated-content"></div>
+<script>
+document.getElementById('onetrust-reject-all-handler').addEventListener('click', function () {
+  document.getElementById('onetrust-consent-sdk').style.display = 'none';
+  setTimeout(function () {
+    var el = document.createElement('p');
+    el.id = 'late-content';
+    el.textContent = 'Contenido adicional que carga tras rechazar el consent y aparece en el DOM mas tarde.';
+    document.getElementById('gated-content').appendChild(el);
+  }, 800);
+});
+</script>
+</body></html>""",
+
     }
 
 

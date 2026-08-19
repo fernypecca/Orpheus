@@ -1,6 +1,13 @@
 """Fase 4 coverage tests: consent gating, cross-origin iframes, anti-bot retry."""
 
 
+def test_e2e_gated_content_with_wait(fs):
+    from conftest import base_cfg, run, scrape_url
+
+    rec = run(scrape_url(base_cfg(consent_wait_ms=3000), fs.url("/gated")))
+    assert "Contenido adicional que carga tras rechazar" in rec.text
+
+
 def test_record_to_dict_coverage_fields():
     from growth_scraper.config import Record
 

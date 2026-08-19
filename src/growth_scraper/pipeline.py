@@ -16,6 +16,7 @@ from . import apipage, extractors, protection
 from .structured import extract_structured
 from .meta import detect_language, extract_meta
 from .screenshot import capture_screenshot
+from .waitcontent import needs_wait, wait_for_content
 from .clickguard import GUARD_JS
 from .config import ROBOTS_UA_TOKEN, ScrapeConfig, Record
 from .consent import handle_consent
@@ -234,6 +235,9 @@ class Pipeline:
             if cfg.handle_consent:
                 status = await handle_consent(page)
                 emit_progress(cfg.verbose, f"consent on {url}: {status}")
+                if needs_wait(status):
+                    waited = await wait_for_content(page, cfg)
+                    emit_progress(cfg.verbose, f"wait_for_content on {url}: {waited}")
             if cfg.expand:
                 summary = await expand_and_scroll(page, cfg, session.netrec)
                 emit_progress(cfg.verbose, f"probe on {url}: {summary}")
