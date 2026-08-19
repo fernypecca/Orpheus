@@ -16,16 +16,3 @@ def build_headers(cfg) -> dict:
         "Upgrade-Insecure-Requests": "1",
         "X-Crawl4AI-Untouched": "1",
     }
-
-
-def custom_exception_handler(coro):
-    """Wrap an async coroutine to capture exceptions as (result, status, error)."""
-
-    async def wrapper():
-        try:
-            result = await coro
-            return result, 200, None
-        except Exception as exc:
-            return None, 0, str(exc)
-
-    return wrapper

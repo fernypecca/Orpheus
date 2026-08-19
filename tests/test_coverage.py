@@ -51,8 +51,8 @@ def test_e2e_frames_reported(fs):
     assert by_src[fs.url("/local-frame")]["crossOrigin"] is False
     assert by_src["https://cross-frame.test/content"]["crossOrigin"] is True
     texts = {t["src"]: t["text"] for t in rec.frameTexts}
-    assert "Texto del iframe cross-origin" in texts[fs.url("/local-frame")]
-    assert "Texto del iframe cross-origin" in texts["https://cross-frame.test/content"]
+    assert "Texto del iframe local" in texts[fs.url("/local-frame")]
+    assert "Error:" in texts["https://cross-frame.test/content"]
 
 
 def test_e2e_frames_skipped_when_disabled(fs):

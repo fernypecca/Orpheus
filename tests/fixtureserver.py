@@ -49,7 +49,7 @@ def build_pages() -> dict:
 <p>Texto de la página principal con iframes.</p>
 </body></html>""",
         "/local-frame": """<!doctype html><html><head><meta charset="utf-8"><title>Frame local</title></head>
-<body><p>Texto del iframe cross-origin.</p></body></html>""",
+<body><p>Texto del iframe local.</p></body></html>""",
         "/": page(
             "Acme Simple Page",
             """

@@ -14,7 +14,7 @@ from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
 
 from . import config as cfgmod
-from .utils import build_headers, custom_exception_handler
+from .utils import build_headers
 
 _MAX_FRAMES = 5
 _FETCH_TIMEOUT_S = 5.0
@@ -84,7 +84,7 @@ async def fetch_frame_texts(srcs, cfg, robots, limit: int = _MAX_FRAME_TEXT):
             except asyncio.TimeoutError:
                 results.append({"src": src, "text": "Error: timeout"})
             except Exception:
-                results.append({"src": src, "text": "Texto del iframe cross-origin"})
+                results.append({"src": src, "text": "Error: fetch"})
 
     await asyncio.gather(*(fetch(s) for s in srcs))
     return results
