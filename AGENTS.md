@@ -31,6 +31,9 @@ de pago, corre en local.
 | `structured.py` | P2: entidades estructuradas (JSON-LD → microdata → meta/OG → heurística), fail-open, campo `structured` + triage en `summary`/CSV. |
 | `meta.py` | Idioma (ISO 639-1, heurística sin deps, fail-open) + metadata rica (`meta`: canonical, OG, twitter, author, publishedAt, favicon) |
 | `screenshot.py` | Screenshot full-page CLI-only (`--screenshots DIR`), campo `screenshots` con rutas |
+| `waitcontent.py` | Espera acotada (poll de `innerText`, cap `consent_wait_ms`) tras dismiss de consent → contenido gated de SPAs capturado completo. Fail-open. |
+| `iframes.py` | Reporta iframes (`frames`) + fetch polite del `src` (`frameTexts`): robots-respecting, concurrency 3, timeout 5s, truncado 2000, fail-open por frame |
+| `utils.py` | `build_headers` — headers polite (UA honesto + `X-Crawl4AI-Untouched`) para fetches extra |
 
 `tests/` corre contra un **fixture server local** (`fixtureserver.py`), no
 necesita internet. `scripts/` tiene los 5 escenarios + `fixture-check.sh`.
@@ -135,6 +138,24 @@ necesita internet. `scripts/` tiene los 5 escenarios + `fixture-check.sh`.
 - **D31** — `meta` es un campo de shape estable (keys con `null`), separado del triage de `summary` (solo `language` ahí y en CSV).
 - **D32** — Screenshots solo CLI (`--screenshots DIR`), PNG full-page en disco, campo puntero `screenshots`; el server nunca escribe a disco.
 - **D33** — Captura en `before_retrieve_html` (página viva y expandida); `session.screenshot_path` → `record.screenshots` solo en éxito.
+- **D34 — Contenido gated: espera acotada, nunca infinita.** Tras una acción de
+  consent que SÍ hace algo (reject/hide/remove) `waitcontent.py` pollea
+  `document.body.innerText.length` cada 500ms hasta estabilizar (Δ<5% en 2
+  polls) o el cap `consent_wait_ms` (5000ms). Fail-open. No se espera si el
+  consent fue no-op/error. Coste para Orpheus: 0 (la espera solo corre tras
+  dismiss).
+- **D35 — Iframes: reportar + fetch polite del `src`.** No ejecutamos script
+  del tercero (sería ejecutar código ajeno); GET limpio con UA honesto +
+  `X-Crawl4AI-Untouched`, robots-respecting (`is_allowed`), concurrency 3,
+  timeout 5s, texto truncado a 2000, fail-open por frame con marcadores
+  honestos (`Error: timeout`/`Error: fetch`/`Skipped by robots` — NUNCA datos
+  fabricados). `crossOrigin` = netloc del src ≠ netloc de la página.
+- **D36 — Anti-bot intermitente: retry acotado con evidencia.** `attempts = 1 +
+  max_retries + anti_bot_retries`. 5xx siguen con backoff corto; 403/429 usan
+  `anti_bot_backoff_s + jitter` (default 15s), cap duro `anti_bot_retries`
+  (default 2). `record.retries` = reintentos reales. robots disallowed → hard
+  stop sin retry. Persistencia → `PROTECTION_BLOCKED` (fail-closed). Sin
+  evasión.
 
 ## Estado de los "problemas conocidos" del brief
 
@@ -158,7 +179,8 @@ necesita internet. `scripts/` tiene los 5 escenarios + `fixture-check.sh`.
 ## Pendiente / limitaciones conocidas
 
 - **Banners de consent en iframes cross-origin**: no se pueden tocar desde el
-  frame principal (y no se capturan en `text`, porque `process_iframes=False`).
+  frame principal. Fase 4 captura su texto vía GET polite (`frameTexts`), pero
+  el banner no se puede rechazar.
 - **Consent walls custom de SPAs (ej. ionos.es)**: su modal Svelte filtra su
   propio texto al markdown y no siempre se puede limpiar SIN aceptar. La regla
   "nunca aceptar" impide desbloquear la página; es una limitación inherente.
@@ -198,6 +220,8 @@ summary, CSV, fail-closed stall, export de imágenes, extracción estructurada, 
 server mode).
 
 Fase 3 (output enriquecido): `uv run pytest tests/test_meta.py -q` → 16 passed (unit idioma/metadata, e2e `/meta-rich`, screenshot PNG, CSV `language`, CLI `--screenshots`).
+
+Fase 4 (cobertura): `uv run pytest tests/test_coverage.py -q` → 8 passed (config/`to_dict`, e2e `/gated` contenido tras dismiss, e2e `/frames` reporte + `frameTexts`, e2e `/flaky403` retry acotado).
 
 ### Validación live (con internet disponible, jun 2026)
 

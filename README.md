@@ -68,6 +68,9 @@ Output is **JSONL, one record per page**:
     "itemCount": 24,
     "pageType": "listing"
   },
+  "frames": [{"src": "https://videos.com/embed/x", "title": "Vídeo", "crossOrigin": true}],
+  "frameTexts": [{"src": "https://videos.com/embed/x", "text": "..."}],
+  "retries": 1,
   "error": null,
   "crawledFrom": null,
   "scrapedAt": "2026-08-17T16:48:52+00:00",
@@ -117,6 +120,26 @@ Cada record añade tres cosas sobre el output base:
 
 La columna `language` también aparece en el CSV cuando usas `--csv`.
 
+### Output de cobertura (Fase 4)
+
+- **`frames` / `frameTexts`** — la página reporta sus iframes
+  (`{src, title, crossOrigin}`) y el texto de cada `src` se captura con un GET
+  polite (sin ejecutar script del tercero), respetando robots.txt, con
+  concurrencia 3, texto truncado a 2000 chars y fail-open por frame
+  (`"Error: timeout"` / `"Error: fetch"` / `"Skipped by robots"` — nunca datos
+  fabricados). Se desactiva con `--no-frames`.
+- **`retries`** — reintentos reales realizados. Cuando un sitio anti-bot
+  intermitente responde 403/429, se reintenta con backoff largo
+  (`--anti-bot-backoff`, default 15s + jitter) hasta `--anti-bot-retries`
+  (default 2). Si el bloqueo persiste → `PROTECTION_BLOCKED` (fail-closed,
+  nunca se evita el bloqueo). `robots.txt` disallowed → sin reintentos.
+- **Contenido gated** — si tras rechazar/ocultar el consent la página carga su
+  contenido real con retraso (consent walls de SPA), `gscrape` espera hasta que
+  el texto estabilice (máx. `--consent-wait-ms`, default 5000ms) para que
+  `text` capture la página completa.
+
+La columna `retries` también aparece en el CSV cuando usas `--csv`.
+
 ## Server mode (warm browser)
 
 For consumers that scrape many URLs in a row (the TS wrappers via `orpheus.sh`),
@@ -159,6 +182,10 @@ the spawn path). The exit-0/text contract is unchanged.
 | `--max-text-chars N` | 12000 | cap `text` to keep records LLM/TPM-friendly (0 = uncapped) |
 | `--fit-text` | off | use crawl4ai's pruned markdown (`fit_markdown`) as `text` |
 | `--max-retries N` | 2 | retry transient errors/timeouts/5xx with exponential backoff |
+| `--no-frames` | off | skip iframe capture (`frames` / `frameTexts`) |
+| `--consent-wait-ms N` | 5000 | max ms to wait for gated content after consent dismissal |
+| `--anti-bot-retries N` | 2 | retry HTTP 403/429 with long backoff (bounded) |
+| `--anti-bot-backoff S` | 15.0 | base seconds between 403/429 retries (+ jitter) |
 | `--export-images DIR` | — | save images to DIR (multimodal pointer) |
 | `--max-api-responses` | 30 | cap of `apiResponses` per record |
 | `--page-timeout` | 30000 ms | page load timeout |
@@ -215,15 +242,17 @@ scripts/fixture-check.sh
 ## Limitations / notes
 
 - Consent banners living inside **cross-origin iframes** can't be removed from
-  the main frame; they also aren't captured in `text` (iframes are not
-  processed by default).
+  the main frame. Their content is captured via polite GET (`frameTexts`, Fase 4),
+  but the banner itself can't be rejected.
 - Bespoke **SPA consent walls** (e.g. ionos.es's Svelte modal) can leak their
   own text into the output and can't always be cleaned without accepting — and
   we never accept. Standard CMPs (OneTrust, Cookiebot, Didomi) are handled
-  cleanly.
+  cleanly. Fase 4 adds a bounded wait after dismissal so content that loads
+  late is captured.
 - Anti-bot sites are intermittent: the same URL may pass or challenge on any
-  given run. Fail-closed detection is verified deterministically by the
-  offline fixture suite.
+  given run. 403/429 are retried with a bounded long backoff (`retries`), and
+  a persistent block is reported fail-closed. No evasion. Fail-closed detection
+  is verified deterministically by the offline fixture suite.
 - `--export-images` downloads images over the network; on protected sites or
   if the host blocks hotlinking, images may be skipped.
 - Live scenario scripts assume working internet; `scripts/fixture-check.sh`
