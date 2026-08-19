@@ -39,6 +39,13 @@ def detect(result) -> str | None:
         if datadome and datadome not in _DATADOME_PASSED:
             return "PROTECTION_BLOCKED: HTTP {0} + DataDome (x-datadome)".format(status)
 
+    # 1b) 403/429 without an anti-bot server is still a hard block for the
+    #     page's own HTML (rate limit, IP ban, geo block, nginx/Fastly...).
+    #     Fail closed instead of emitting a near-empty record that looks like
+    #     a successful page.
+    if status in (403, 429):
+        return f"PROTECTION_BLOCKED: HTTP {status} (blocked or rate limited)"
+
     # 2) Challenge-page titles (some blocks return HTTP 200).
     for frag in _TITLE_HINTS:
         if frag in title:

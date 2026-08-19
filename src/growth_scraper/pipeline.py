@@ -344,6 +344,7 @@ class Pipeline:
                     emit_progress(cfg.verbose, f"retry {url}: status {status} (attempt {attempt + 1}/{attempts})")
                     result = None
                     retries_done += 1
+                    await asyncio.sleep(cfg.retry_backoff * (2 ** attempt))
                     continue
                 used_session = session
                 break

@@ -52,8 +52,9 @@ class RobotsPolicy:
                 return self._memory[domain]
         rp = await asyncio.to_thread(self._load, url, domain)
         async with self._lock:
-            self._memory[domain] = rp
-            return rp
+            if domain not in self._memory:
+                self._memory[domain] = rp
+            return self._memory[domain]
 
     def _load(self, url: str, domain: str) -> urllib.robotparser.RobotFileParser | None:
         rp = urllib.robotparser.RobotFileParser()

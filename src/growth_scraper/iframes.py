@@ -20,9 +20,7 @@ _MAX_FRAMES = 5
 _FETCH_TIMEOUT_S = 5.0
 _CONCURRENCY = 3
 _MAX_FRAME_TEXT = 2000
-
-
-_SKIP_SCHEMES = ("data:", "about:", "blob:", "javascript:",)
+_MAX_FRAME_BYTES = 65_536
 
 
 def extract_iframes(url: str, html: str, max_frames: int = _MAX_FRAMES):
@@ -30,13 +28,13 @@ def extract_iframes(url: str, html: str, max_frames: int = _MAX_FRAMES):
     try:
         soup = BeautifulSoup(html, "html.parser")
         frames = []
-        for iframe in soup.find_all("iframe")[:max_frames]:
+        for iframe in soup.find_all("iframe"):
             src = (iframe.get("src") or "").strip()
             if not src:
                 continue
-            if src.lower().startswith(_SKIP_SCHEMES):
-                continue
             src = urljoin(url, src)
+            if urlparse(src).scheme not in ("http", "https"):
+                continue
             frame_origin = urlparse(src).netloc
             page_origin = urlparse(url).netloc
             cross_origin = frame_origin != page_origin
@@ -47,6 +45,8 @@ def extract_iframes(url: str, html: str, max_frames: int = _MAX_FRAMES):
                     "crossOrigin": cross_origin,
                 }
             )
+            if len(frames) >= max_frames:
+                break
         return frames
     except Exception:
         return []
@@ -55,13 +55,20 @@ def extract_iframes(url: str, html: str, max_frames: int = _MAX_FRAMES):
 async def _polite_get_text(url: str, headers: dict) -> str:
     import httpx
 
-    async with httpx.AsyncClient(timeout=4.0) as client:
-        resp = await client.get(url, headers=headers)
-    if resp.status_code != 200:
-        raise RuntimeError(f"HTTP {resp.status_code}")
+    chunks: list[bytes] = []
+    total = 0
+    async with httpx.AsyncClient(timeout=4.0, follow_redirects=True) as client:
+        async with client.stream("GET", url, headers=headers) as resp:
+            if resp.status_code != 200:
+                raise RuntimeError(f"HTTP {resp.status_code}")
+            async for chunk in resp.aiter_bytes():
+                chunks.append(chunk)
+                total += len(chunk)
+                if total >= _MAX_FRAME_BYTES:
+                    break
     from bs4 import BeautifulSoup
 
-    soup = BeautifulSoup(resp.text, "html.parser")
+    soup = BeautifulSoup(b"".join(chunks).decode("utf-8", errors="replace"), "html.parser")
     return soup.get_text(" ", strip=True)
 
 

@@ -1,7 +1,9 @@
 """gscrape serve — warm-browser HTTP server (single-URL scrapes).
 
 Binds to 127.0.0.1 only. Never expose this on a public interface: `/scrape`
-fetches arbitrary URLs (SSRF surface).
+fetches arbitrary URLs (SSRF surface), and iframe srcs on scraped pages are
+fetched too (single polite GET, capped — still a request a malicious page
+could aim at internal hosts).
 """
 
 from __future__ import annotations
@@ -36,6 +38,10 @@ class ScrapeOptions(BaseModel):
     maxApiResponses: int | None = None
     cacheDir: str | None = None
     rawHtml: bool = False
+    fetchFrames: bool | None = None
+    consentWaitMs: int | None = None
+    antiBotRetries: int | None = None
+    antiBotBackoff: float | None = None
 
 
 class ScrapeRequest(BaseModel):
@@ -99,6 +105,14 @@ def create_app(base_cfg: ScrapeConfig, max_concurrency: int = 4, token: str | No
         if o.cacheDir:
             cfg.cache_dir = o.cacheDir
         cfg.raw_html = o.rawHtml
+        if o.fetchFrames is not None:
+            cfg.fetch_frames = o.fetchFrames
+        if o.consentWaitMs is not None:
+            cfg.consent_wait_ms = max(0, o.consentWaitMs)
+        if o.antiBotRetries is not None:
+            cfg.anti_bot_retries = max(0, o.antiBotRetries)
+        if o.antiBotBackoff is not None:
+            cfg.anti_bot_backoff_s = max(0.0, o.antiBotBackoff)
         if pipeline is None or sem is None:
             raise HTTPException(status_code=500, detail="server not initialized")
         try:
