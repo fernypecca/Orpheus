@@ -324,19 +324,20 @@ class Handler(BaseHTTPRequestHandler):
             ).encode()
             self._send(403, body, headers={"Server": "cloudflare", "cf-ray": "fixture-ray"})
             return
-        if path == "/flaky403":
-            q = urlparse(self.path).query
-            fails = int(q.split("fails=")[1]) if "fails=" in q else 999
-            if self.state.hits["/flaky403"] <= fails:
-                self._send(403, b"blocked", headers={"Server": "cloudflare", "cf-ray": "flaky"})
+        if path == "/flaky":
+            if self.state.hits["/flaky"] <= 1:
+                self._send(500, b"boom")
                 return
             html = self.pages.get("/") or b""
             if isinstance(html, str):
                 html = html.encode("utf-8")
             self._send(200, html)
             return
-            if self.state.hits["/flaky"] <= 1:
-                self._send(500, b"boom")
+        if path == "/flaky403":
+            q = urlparse(self.path).query
+            fails = int(q.split("fails=")[1]) if "fails=" in q else 999
+            if self.state.hits["/flaky403"] <= fails:
+                self._send(403, b"blocked", headers={"Server": "cloudflare", "cf-ray": "flaky"})
                 return
             html = self.pages.get("/") or b""
             if isinstance(html, str):
