@@ -153,7 +153,9 @@ uv run gscrape serve --port 9000 --cache-dir .cache --token secret
 - `GET /health` → `{"status": "ok", "version": "..."}`
 - `POST /scrape` → `{"url": "...", "options": {...}}` → the same record shape as the CLI.
   Options: `maxTextChars`, `fitText`, `ignoreRobots`, `noConsent`, `noExpand`, `noApis`,
-  `maxRetries`, `maxApiResponses`, `cacheDir`, `rawHtml`.
+  `maxRetries`, `maxApiResponses`, `cacheDir`, `rawHtml`, `fetchFrames`,
+  `consentWaitMs`, `antiBotRetries`, `antiBotBackoff`. (`orpheus.sh` sends
+  `fetchFrames: false` — it only needs `text`, so iframe capture is skipped.)
 - With `--cache-dir` (server or per-request `cacheDir`), a cached URL returns
   immediately with `"fromCache": true`.
 - Optional `--token` (send `Authorization: Bearer <token>`). Binds to 127.0.0.1 only —
