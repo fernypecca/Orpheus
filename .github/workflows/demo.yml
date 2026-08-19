@@ -1,0 +1,89 @@
+name: Run demo
+
+# Try Orpheus without installing anything: click "Run workflow",
+# paste any URL, and the scraper runs on GitHub's servers.
+# The clean LLM-ready text + the full JSONL record come back in seconds.
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "URL to scrape"
+        required: true
+        default: "https://www.python.org"
+      max_text_chars:
+        description: "Max characters for the LLM-ready text (0 = uncapped)"
+        required: false
+        default: "6000"
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv + project
+        run: |
+          python -m pip install --quiet uv
+          uv sync
+
+      - name: Install browser engine
+        run: uv run playwright install --with-deps chromium
+
+      - name: Scrape with Orpheus
+        id: scrape
+        run: |
+          mkdir -p work
+          uv run gscrape "$URL" -o work/demo.jsonl \
+            --max-text-chars "$MAX_TEXT_CHARS" --delay 0.3 --jitter 0.15
+        env:
+          URL: ${{ inputs.url }}
+          MAX_TEXT_CHARS: ${{ inputs.max_text_chars }}
+
+      - name: Show the result
+        run: python3 - work/demo.jsonl <<'PY'
+import json, sys, textwrap
+rec = json.loads(open(sys.argv[1]).readline())
+
+if rec.get("protectionBlocked") or rec.get("error"):
+    print("## Orpheus — blocked honestly", file=sys.stderr)
+    print(f"The site {rec.get('url')} is protected. Orpheus never evades: it returns an explicit error instead of fake data.", file=sys.stderr)
+    print("", file=sys.stderr)
+    print(f"**error**: `{rec.get('error')}`", file=sys.stderr)
+    print(f"**status**: {rec.get('statusCode')}  **protected**: {rec.get('protectionBlocked')}", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("*This is the fail-closed behavior — a feature, not a failure.*", file=sys.stderr)
+    raise SystemExit(0)
+
+text = (rec.get("text") or "").strip()
+s = rec.get("summary") or {}
+print("## Orpheus — clean, LLM-ready text", file=sys.stderr)
+print("", file=sys.stderr)
+for line in text.splitlines()[:40]:
+    print(line, file=sys.stderr)
+if len(text.splitlines()) > 40:
+    print("", file=sys.stderr)
+    print(f"*… {len(text)} chars total.*", file=sys.stderr)
+print("", file=sys.stderr)
+print("## Record summary", file=sys.stderr)
+print("", file=sys.stderr)
+print(f"- **URL**: {rec.get('url')}", file=sys.stderr)
+print(f"- **Title**: {s.get('title')}", file=sys.stderr)
+print(f"- **Language**: {s.get('language')}   **Words**: {s.get('wordCount')}", file=sys.stderr)
+print(f"- **Status**: {rec.get('statusCode')}   **Protected**: {rec.get('protectionBlocked')}", file=sys.stderr)
+print(f"- **Structured**: {s.get('structuredSource') or 'none detected'}", file=sys.stderr)
+print("", file=sys.stderr)
+print("Full JSONL record attached as the artifact `demo-jsonl`.", file=sys.stderr)
+PY
+
+      - name: Upload JSONL record
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-jsonl
+          path: work/demo.jsonl
+          if-no-files-found: error

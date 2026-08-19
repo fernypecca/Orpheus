@@ -5,10 +5,21 @@ directories, marketplaces). Built on **Crawl4AI 0.9.x** (Playwright underneath).
 Cost ≈ $0: runs on your machine and produces JSONL that feeds free LLMs
 (Nemotron via NVIDIA, Groq) directly.
 
-## Try it in one click (no install)
+## Try it — no install required
 
-Open this repo in a GitHub Codespace and run the demo — the browser engine is
-already set up:
+**Run the demo on GitHub Actions (recommended):** click the button, paste any
+URL, and the scraper runs on GitHub's servers. The clean LLM-ready text and the
+full JSONL record come back in seconds — you never touch a terminal.
+
+[![Run demo on GitHub Actions](https://img.shields.io/badge/Run%20demo%20on%20GitHub%20Actions-1%20click-0E7A4D?logo=githubactions&style=flat-square)](https://github.com/fernypecca/Orpheus/actions/workflows/demo.yml)
+
+1. Open the link above.
+2. Click **Run workflow** (leave the URL, or paste your own).
+3. Watch the run — the clean text prints right in the log, and the full JSONL
+   record is attached as an artifact.
+
+**Or open a Codespace** (a browser-based dev machine GitHub spins up for you —
+nothing installs on your computer):
 
 [![Open in GitHub Codespaces](https://img.shields.io/badge/Open%20in%20Codespaces-1-click-181717?logo=github&style=flat-square)](https://codespaces.new/fernypecca/Orpheus)
 
