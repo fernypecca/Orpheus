@@ -10,6 +10,18 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 # ---------------------------------------------------------------------------
+# Language stopwords for stopword-based detection (es, en, pt, fr, de, it)
+# ---------------------------------------------------------------------------
+LANG_STOPWORDS: dict[str, set[str]] = {
+    "es": {"el", "la", "los", "las", "de", "y", "en", "es", "un", "una", "que", "para", "por", "con", "se", "del"},
+    "en": {"the", "and", "of", "to", "in", "is", "a", "for", "with", "that", "this", "are", "as", "on"},
+    "pt": {"o", "a", "os", "as", "de", "e", "em", "um", "uma", "que", "para", "por", "com", "se", "do", "da"},
+    "fr": {"le", "la", "les", "de", "et", "en", "un", "une", "est", "pour", "par", "avec", "que", "des", "du"},
+    "de": {"der", "die", "das", "und", "von", "in", "ist", "ein", "eine", "für", "mit", "zu", "den", "dem", "des"},
+    "it": {"il", "la", "lo", "i", "gli", "le", "di", "e", "in", "un", "una", "per", "con", "che", "del", "della"},
+}
+
+# ---------------------------------------------------------------------------
 # Defaults (CLI flags override these)
 # ---------------------------------------------------------------------------
 DEFAULT_DELAY = 0.4          # seconds between page loads (politeness floor)
