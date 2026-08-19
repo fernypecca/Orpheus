@@ -1,0 +1,40 @@
+{
+  "planPath": "docs/superpowers/plans/2026-08-19-fase3-output-quality.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: meta.py — language detection + rich metadata + unit tests",
+      "status": "pending",
+      "description": "**Goal:** A dependency-free, fail-open module that detects ISO 639-1 language and extracts rich metadata from raw HTML.\n\n**Files:**\n- Create: `src/growth_scraper/meta.py`\n- Modify: `src/growth_scraper/config.py` (add `LANG_STOPWORDS`)\n- Test: `tests/test_meta.py`\n\n**Acceptance Criteria:**\n- `detect_language(html, text)` returns `str | None`: html lang → content-language → stopwords (≥80 tokens, ratio ≥0.05, 1.5× margin)\n- `extract_meta(html, url)` stable-shape dict, urljoin, all None when absent\n- Never raises on empty/broken HTML\n- `LANG_STOPWORDS` for es/en/pt/fr/de/it\n\n**Verify:** `uv run pytest tests/test_meta.py -q` → 10 passed\n\n```json:metadata\n{\"files\": [\"src/growth_scraper/meta.py\", \"src/growth_scraper/config.py\", \"tests/test_meta.py\"], \"verifyCommand\": \"uv run pytest tests/test_meta.py -q\", \"acceptanceCriteria\": [\"detect_language heuristics\", \"extract_meta stable shape\", \"fail-open\", \"LANG_STOPWORDS\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Wire config — screenshot_dir, Record.meta/screenshots, to_dict",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** New config/record surface: `ScrapeConfig.screenshot_dir`, `Record.meta`, `Record.screenshots`, unconditional `to_dict` serialization.\n\n**Files:**\n- Modify: `src/growth_scraper/config.py`\n- Test: `tests/test_meta.py`\n\n**Acceptance Criteria:**\n- `ScrapeConfig.screenshot_dir: Optional[str] = None`\n- `Record.meta` / `Record.screenshots` fields\n- `to_dict()` emits `meta` and `screenshots` unconditionally\n\n**Verify:** `uv run pytest tests/test_meta.py -q` → 11 passed\n\n```json:metadata\n{\"files\": [\"src/growth_scraper/config.py\", \"tests/test_meta.py\"], \"verifyCommand\": \"uv run pytest tests/test_meta.py -q\", \"acceptanceCriteria\": [\"screenshot_dir config\", \"Record.meta/screenshots\", \"to_dict emits fields\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: screenshot.py + pipeline integration + e2e tests",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** Pipeline populates `record.meta`, `summary.language`, `record.screenshots`; screenshots captured in `before_retrieve_html` hook, propagated only on success.\n\n**Files:**\n- Create: `src/growth_scraper/screenshot.py`\n- Modify: `src/growth_scraper/pipeline.py`\n- Modify: `tests/fixtureserver.py` (add `/meta-rich`)\n- Test: `tests/test_meta.py`\n\n**Acceptance Criteria:**\n- `capture_screenshot` writes PNG, returns abs path, errors → None\n- `Session.screenshot_path`; hook captures when `cfg.screenshot_dir` set\n- `run_one`: record.meta, summary.language, record.screenshots on success\n- `/meta-rich` fixture serves lang=es + OG/canonical/author/published_time/favicon\n- Server mode unchanged\n\n**Verify:** `uv run pytest tests/test_meta.py -q` → 13 passed; `uv run pytest tests/ -q` → all green\n\n```json:metadata\n{\"files\": [\"src/growth_scraper/screenshot.py\", \"src/growth_scraper/pipeline.py\", \"tests/fixtureserver.py\", \"tests/test_meta.py\"], \"verifyCommand\": \"uv run pytest tests/test_meta.py -q\", \"acceptanceCriteria\": [\"screenshot capture\", \"hook wiring\", \"record.meta + language + screenshots\", \"e2e passes\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: CLI --screenshots DIR + CSV language column + tests",
+      "status": "pending",
+      "blockedBy": [3],
+      "description": "**Goal:** Users enable screenshots via CLI; CSV mirror exposes detected language.\n\n**Files:**\n- Modify: `src/growth_scraper/cli.py`\n- Modify: `src/growth_scraper/records.py`\n- Test: `tests/test_meta.py`\n\n**Acceptance Criteria:**\n- `--screenshots DIR` flag → `ScrapeConfig.screenshot_dir`\n- `CsvWriter` header+rows include `language`\n- CLI run with `--screenshots` writes one PNG per URL, JSONL contains path\n- CSV row for `/meta-rich` has language == es\n\n**Verify:** `uv run pytest tests/test_meta.py -q` → 15 passed\n\n```json:metadata\n{\"files\": [\"src/growth_scraper/cli.py\", \"src/growth_scraper/records.py\", \"tests/test_meta.py\"], \"verifyCommand\": \"uv run pytest tests/test_meta.py -q\", \"acceptanceCriteria\": [\"CLI flag\", \"CSV language column\", \"screenshot file written\", \"language es in row\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: Docs — README output enriquecido + AGENTS (módulos, D30-D33, evidencia)",
+      "status": "pending",
+      "blockedBy": [4],
+      "description": "**Goal:** Document the new output surface and record Fase 3 decisions/evidence.\n\n**Files:**\n- Modify: `README.md`\n- Modify: `AGENTS.md`\n\n**Acceptance Criteria:**\n- README documents `meta`, `summary.language`, `--screenshots DIR`\n- AGENTS: module rows meta.py/screenshot.py, decisions D30-D33, test evidence\n- No placeholders; matches existing style\n\n**Verify:** `uv run pytest tests/ -q` → all green (unchanged)\n\n```json:metadata\n{\"files\": [\"README.md\", \"AGENTS.md\"], \"verifyCommand\": \"uv run pytest tests/ -q\", \"acceptanceCriteria\": [\"README output enriquecido\", \"AGENTS modules + D30-D33 + evidence\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-08-19T00:00:00Z"
+}
