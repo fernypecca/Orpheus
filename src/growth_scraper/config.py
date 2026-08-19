@@ -177,6 +177,11 @@ class ScrapeConfig:
     handle_consent: bool = True
     export_images: Optional[str] = None
     screenshot_dir: Optional[str] = None
+    consent_wait_ms: int = 5000
+    fetch_frames: bool = True
+    max_frames: int = 5
+    anti_bot_retries: int = 2
+    anti_bot_backoff_s: float = 15.0
     max_api_responses: int = DEFAULT_MAX_API_RESPONSES
     max_expansions: int = DEFAULT_MAX_EXPANSIONS
     max_text_chars: int = DEFAULT_MAX_TEXT_CHARS
@@ -222,6 +227,9 @@ class Record:
     structured: Optional[dict] = None
     meta: Optional[dict] = None
     screenshots: Optional[list] = None
+    frames: Optional[list] = None
+    frameTexts: Optional[list] = None
+    retries: int = 0
     fromCache: bool = False
 
     def to_dict(self) -> dict:
@@ -242,6 +250,9 @@ class Record:
             "structured": self.structured,
             "meta": self.meta,
             "screenshots": self.screenshots,
+            "frames": self.frames,
+            "frameTexts": self.frameTexts,
+            "retries": self.retries,
         }
         # Opt-in (--raw-html): unprocessed HTML, for consumers that need what
         # Crawl4AI's cleaning strips (e.g. inline JSON <script> blocks).
