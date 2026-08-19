@@ -16,6 +16,8 @@ and don't depend on internet access:
   /loop /loop2 /loop3   link graph for crawl-mode tests
   /meta-rich    meta/language-rich page (Fase 3)
   /gated        consent wall that gates content until rejected (Fase 4)
+  /frames        page with cross-origin + same-origin iframes (Fase 4)
+  /local-frame   same-origin iframe content (Fase 4)
 """
 
 from __future__ import annotations
@@ -40,6 +42,14 @@ def page(title: str, body: str) -> str:
 
 def build_pages() -> dict:
     return {
+        "/frames": """<!doctype html><html><head><meta charset="utf-8"><title>Frames</title></head>
+<body><h1>Página con iframes</h1>
+<iframe src="/local-frame" title="Local"></iframe>
+<iframe src="https://cross-frame.test/content" title="Cross"></iframe>
+<p>Texto de la página principal con iframes.</p>
+</body></html>""",
+        "/local-frame": """<!doctype html><html><head><meta charset="utf-8"><title>Frame local</title></head>
+<body><p>Texto del iframe cross-origin.</p></body></html>""",
         "/": page(
             "Acme Simple Page",
             """

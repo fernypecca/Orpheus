@@ -413,6 +413,17 @@ class Pipeline:
         if used_session is not None and used_session.screenshot_path:
             record.screenshots = [used_session.screenshot_path]
 
+        if cfg.fetch_frames and not record.frames:
+            from .iframes import extract_iframes, fetch_frame_texts
+
+            html = getattr(result, "html", "") or ""
+            frames = extract_iframes(url, html, cfg.max_frames)
+            if frames:
+                record.frames = frames
+                robots = self.robots
+                record.frameTexts = await fetch_frame_texts(
+                    [f["src"] for f in frames], cfg, robots
+                )
         if cfg.cache_dir:
             self._cache_write(url, record, cfg.cache_dir)
         return record

@@ -26,6 +26,43 @@ def test_record_to_dict_coverage_fields():
     assert d["retries"] == 2
 
 
+def test_extract_iframes_pure():
+    from growth_scraper.iframes import extract_iframes
+
+    html = """<iframe src="https://videos.com/embed/x" title="Vídeo"></iframe>
+<iframe src="/local" title="Local"></iframe>
+<iframe src="data:text/html;base64,abc"></iframe>
+<iframe></iframe>"""
+    frames = extract_iframes("https://site.com/page", html, max_frames=5)
+    assert len(frames) == 2
+    assert frames[0]["src"] == "https://videos.com/embed/x"
+    assert frames[0]["title"] == "Vídeo"
+    assert frames[0]["crossOrigin"] is True
+    assert frames[1]["src"] == "https://site.com/local"
+    assert frames[1]["crossOrigin"] is False
+
+
+def test_e2e_frames_reported(fs):
+    from conftest import base_cfg, run, scrape_url
+
+    rec = run(scrape_url(base_cfg(fetch_frames=True), fs.url("/frames")))
+    assert rec.frames and len(rec.frames) == 2
+    by_src = {f["src"]: f for f in rec.frames}
+    assert by_src[fs.url("/local-frame")]["crossOrigin"] is False
+    assert by_src["https://cross-frame.test/content"]["crossOrigin"] is True
+    texts = {t["src"]: t["text"] for t in rec.frameTexts}
+    assert "Texto del iframe cross-origin" in texts[fs.url("/local-frame")]
+    assert "Texto del iframe cross-origin" in texts["https://cross-frame.test/content"]
+
+
+def test_e2e_frames_skipped_when_disabled(fs):
+    from conftest import base_cfg, run, scrape_url
+
+    rec = run(scrape_url(base_cfg(fetch_frames=False), fs.url("/frames")))
+    assert rec.frames is None
+    assert rec.frameTexts is None
+
+
 def test_scrape_config_fase4_defaults():
     from growth_scraper.config import ScrapeConfig
 
