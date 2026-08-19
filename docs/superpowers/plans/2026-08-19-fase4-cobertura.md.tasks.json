@@ -28,7 +28,7 @@
     {
       "id": 4,
       "subject": "Task 4: Anti-bot retry 403/429 + CSV retries + CLI flags + e2e",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         3
       ],
@@ -44,5 +44,5 @@
       "description": "**Goal:** Document Fase 4 output and record decisions/evidence.\n\n**Files:**\n- Modify: `README.md`\n- Modify: `AGENTS.md`\n\n**Acceptance Criteria:**\n- README: gated wait, frames/frameTexts, retries\n- AGENTS: module rows waitcontent.py/iframes.py, D34-D36, evidence\n- No placeholders\n\n**Verify:** `git show --stat HEAD` → only 2 files\n\n```json:metadata\n{\"files\": [\"README.md\", \"AGENTS.md\"], \"verifyCommand\": \"git show --stat HEAD\", \"acceptanceCriteria\": [\"README cobertura\", \"AGENTS modules + D34-D36 + evidence\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-08-19T07:30:00Z"
+  "lastUpdated": "2026-08-19T08:00:00Z"
 }
