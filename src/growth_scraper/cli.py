@@ -55,6 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
                         "<script type=application/json> data crawl4ai's cleaning would strip).")
     p.add_argument("--max-retries", type=int, default=2, help="Retry transient errors/timeouts/5xx with backoff.")
     p.add_argument("--export-images", metavar="DIR", help="Save page images into DIR (P2 multimodal pointer).")
+    p.add_argument("--screenshots", metavar="DIR", help="Save a full-page PNG per URL into DIR (Fase 3 multimodal pointer).")
     p.add_argument("--max-api-responses", type=int, default=DEFAULT_MAX_API_RESPONSES)
     p.add_argument("--page-timeout", type=int, default=30_000, help="Page load timeout in ms.")
     p.add_argument("--headful", action="store_true", help="Show the browser window.")
@@ -107,6 +108,7 @@ def main(argv: list[str] | None = None) -> int:
         capture_apis=not args.no_apis,
         handle_consent=not args.no_consent,
         export_images=args.export_images,
+        screenshot_dir=args.screenshots,
         max_api_responses=args.max_api_responses,
         max_text_chars=args.max_text_chars,
         fit_text=args.fit_text,

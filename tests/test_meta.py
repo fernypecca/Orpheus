@@ -115,6 +115,37 @@ def test_e2e_meta_rich_through_browser(fs):
     assert rec.summary["language"] == "es"
 
 
+def test_cli_screenshots_flag(fs, tmp_path):
+    from growth_scraper.cli import main
+
+    out = tmp_path / "cli.jsonl"
+    shots = tmp_path / "shots"
+    code = main([fs.url("/meta-rich"), "-o", str(out), "--screenshots", str(shots),
+                 "--delay", "0", "--jitter", "0"])
+    assert code == 0
+    pngs = list(shots.glob("*.png"))
+    assert len(pngs) == 1
+    line = out.read_text().splitlines()[0]
+    assert str(pngs[0]) in line
+
+
+def test_csv_language_column(fs, tmp_path):
+    import csv
+
+    from growth_scraper.cli import main
+
+    out = tmp_path / "cli.jsonl"
+    code = main([fs.url("/meta-rich"), "-o", str(out), "--csv",
+                 "--delay", "0", "--jitter", "0"])
+    assert code == 0
+    with open(tmp_path / "cli.csv", "r", encoding="utf-8", newline="") as f:
+        rows = list(csv.reader(f))
+    header = rows[0]
+    assert "language" in header
+    idx = header.index("language")
+    assert rows[1][idx] == "es"
+
+
 def test_e2e_screenshot_through_browser(fs, tmp_path):
     import os
 
