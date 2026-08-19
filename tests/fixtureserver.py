@@ -18,6 +18,7 @@ and don't depend on internet access:
   /gated        consent wall that gates content until rejected (Fase 4)
   /frames        page with cross-origin + same-origin iframes (Fase 4)
   /local-frame   same-origin iframe content (Fase 4)
+  /flaky403      403 that clears after N requests (anti-bot retry, Fase 4)
 """
 
 from __future__ import annotations
@@ -323,7 +324,17 @@ class Handler(BaseHTTPRequestHandler):
             ).encode()
             self._send(403, body, headers={"Server": "cloudflare", "cf-ray": "fixture-ray"})
             return
-        if path == "/flaky":
+        if path == "/flaky403":
+            q = urlparse(self.path).query
+            fails = int(q.split("fails=")[1]) if "fails=" in q else 999
+            if self.state.hits["/flaky403"] <= fails:
+                self._send(403, b"blocked", headers={"Server": "cloudflare", "cf-ray": "flaky"})
+                return
+            html = self.pages.get("/") or b""
+            if isinstance(html, str):
+                html = html.encode("utf-8")
+            self._send(200, html)
+            return
             if self.state.hits["/flaky"] <= 1:
                 self._send(500, b"boom")
                 return

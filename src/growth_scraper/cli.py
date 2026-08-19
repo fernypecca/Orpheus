@@ -54,6 +54,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Include unprocessed `rawHtml` in each record (for consumers that parse inline "
                         "<script type=application/json> data crawl4ai's cleaning would strip).")
     p.add_argument("--max-retries", type=int, default=2, help="Retry transient errors/timeouts/5xx with backoff.")
+    p.add_argument("--no-frames", action="store_true", help="Skip iframe capture (frames/frameTexts).")
+    p.add_argument("--consent-wait-ms", type=int, default=5000, help="Max ms to wait for gated content after consent dismissal.")
+    p.add_argument("--anti-bot-retries", type=int, default=2, help="Retry HTTP 403/429 with long backoff.")
+    p.add_argument("--anti-bot-backoff", type=float, default=15.0, help="Base seconds between 403/429 retries.")
     p.add_argument("--export-images", metavar="DIR", help="Save page images into DIR (P2 multimodal pointer).")
     p.add_argument("--screenshots", metavar="DIR", help="Save a full-page PNG per URL into DIR.")
     p.add_argument("--max-api-responses", type=int, default=DEFAULT_MAX_API_RESPONSES)
@@ -114,6 +118,10 @@ def main(argv: list[str] | None = None) -> int:
         fit_text=args.fit_text,
         raw_html=args.raw_html,
         max_retries=max(0, args.max_retries),
+        fetch_frames=not args.no_frames,
+        consent_wait_ms=max(0, args.consent_wait_ms),
+        anti_bot_retries=max(0, args.anti_bot_retries),
+        anti_bot_backoff_s=args.anti_bot_backoff,
         csv_output=args.csv,
         page_timeout_ms=args.page_timeout,
         headful=args.headful,

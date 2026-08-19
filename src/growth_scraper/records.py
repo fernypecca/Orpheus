@@ -43,7 +43,7 @@ class CsvWriter:
 
     HEADERS = [
         "url", "title", "pageType", "domain", "metaDescription", "h1",
-        "wordCount", "itemCount", "statusCode", "error", "text_preview",
+        "wordCount", "itemCount", "statusCode", "retries", "error", "text_preview",
         "structuredSource", "structuredPrice", "structuredRatingValue",
         "structuredReviewCount", "structuredCategory", "language",
     ]
@@ -67,6 +67,7 @@ class CsvWriter:
             s.get("wordCount", 0),
             s.get("itemCount", 0),
             record.statusCode or "",
+            record.retries,
             record.error or "",
             preview,
             s.get("structuredSource", ""),

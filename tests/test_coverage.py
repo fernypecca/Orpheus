@@ -63,6 +63,29 @@ def test_e2e_frames_skipped_when_disabled(fs):
     assert rec.frameTexts is None
 
 
+def test_e2e_anti_bot_retry_succeeds(fs):
+    from conftest import base_cfg, run, scrape_url
+
+    rec = run(scrape_url(
+        base_cfg(max_retries=0, anti_bot_retries=2, anti_bot_backoff_s=0.05, jitter=0),
+        fs.url("/flaky403?fails=2"),
+    ))
+    assert rec.statusCode == 200
+    assert rec.retries == 2
+    assert rec.protectionBlocked is False
+
+
+def test_e2e_anti_bot_retry_blocked(fs):
+    from conftest import base_cfg, run, scrape_url
+
+    rec = run(scrape_url(
+        base_cfg(max_retries=0, anti_bot_retries=0),
+        fs.url("/flaky403?fails=999"),
+    ))
+    assert rec.protectionBlocked is True
+    assert rec.retries == 0
+
+
 def test_scrape_config_fase4_defaults():
     from growth_scraper.config import ScrapeConfig
 

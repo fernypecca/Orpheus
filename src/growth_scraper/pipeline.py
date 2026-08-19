@@ -7,6 +7,7 @@ import copy
 import hashlib
 import json
 import os
+import random
 import uuid
 from urllib.parse import urljoin, urlparse
 
@@ -313,11 +314,12 @@ class Pipeline:
 
         emit_progress(cfg.verbose, f"crawling {url}")
 
-        # One browser context per run so concurrent crawls don't share state.
-        attempts = 1 + cfg.max_retries
+        # retry loop: 5xx + 403/429 with long backoff
+        attempts = 1 + cfg.max_retries + cfg.anti_bot_retries
         result = None
         last_exc: Exception | None = None
         used_session: Session | None = None
+        retries_done = 0
         for attempt in range(attempts):
             sid = uuid.uuid4().hex
             session = Session()
@@ -332,9 +334,16 @@ class Pipeline:
                 if result is None:
                     raise RuntimeError("crawl4ai returned no result")
                 status = getattr(result, "status_code", None)
+                if status in (403, 429) and attempt < attempts - 1:
+                    emit_progress(cfg.verbose, f"retry {url}: status {status} (attempt {attempt + 1}/{attempts})")
+                    result = None
+                    retries_done += 1
+                    await asyncio.sleep(cfg.anti_bot_backoff_s + random.uniform(0, cfg.jitter))
+                    continue
                 if status is not None and status >= 500 and attempt < attempts - 1:
                     emit_progress(cfg.verbose, f"retry {url}: status {status} (attempt {attempt + 1}/{attempts})")
                     result = None
+                    retries_done += 1
                     continue
                 used_session = session
                 break
@@ -343,6 +352,7 @@ class Pipeline:
                 if attempt < attempts - 1:
                     emit_progress(cfg.verbose, f"retry {url}: {exc}")
                     await asyncio.sleep(cfg.retry_backoff * (2 ** attempt))
+                    retries_done += 1
                     continue
                 break
             finally:
@@ -352,9 +362,13 @@ class Pipeline:
                 except Exception:
                     pass
 
+        record.retries = retries_done
+
         if result is None:
             record.error = f"CRAWL_ERROR: {last_exc or 'no result after retries'}"
             return record
+
+        record.statusCode = getattr(result, "status_code", None)
 
         record.statusCode = getattr(result, "status_code", None)
         if record.statusCode is not None and record.statusCode >= 500:
