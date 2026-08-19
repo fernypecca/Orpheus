@@ -369,8 +369,6 @@ class Pipeline:
             return record
 
         record.statusCode = getattr(result, "status_code", None)
-
-        record.statusCode = getattr(result, "status_code", None)
         if record.statusCode is not None and record.statusCode >= 500:
             record.error = f"HTTP_ERROR: {record.statusCode} after {attempts} attempt(s)"
             emit_progress(cfg.verbose, record.error)
