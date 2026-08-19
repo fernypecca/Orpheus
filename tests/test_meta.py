@@ -88,3 +88,18 @@ def test_extract_meta_empty_all_none():
 def test_extract_meta_broken_html_no_raise():
     m = extract_meta("<meta property=og:title content=unclosed", "https://example.com")
     assert m is not None
+
+
+def test_record_to_dict_meta_screenshots():
+    from growth_scraper.config import Record
+
+    r = Record(url="https://example.com")
+    d = r.to_dict()
+    assert d["meta"] is None
+    assert d["screenshots"] is None
+
+    r.meta = {"ogTitle": "X"}
+    r.screenshots = ["/tmp/a.png"]
+    d = r.to_dict()
+    assert d["meta"] == {"ogTitle": "X"}
+    assert d["screenshots"] == ["/tmp/a.png"]
