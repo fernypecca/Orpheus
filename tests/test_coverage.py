@@ -49,10 +49,10 @@ def test_e2e_frames_reported(fs):
     assert rec.frames and len(rec.frames) == 2
     by_src = {f["src"]: f for f in rec.frames}
     assert by_src[fs.url("/local-frame")]["crossOrigin"] is False
-    assert by_src["https://cross-frame.test/content"]["crossOrigin"] is True
+    assert by_src["http://127.0.0.1:9/content"]["crossOrigin"] is True
     texts = {t["src"]: t["text"] for t in rec.frameTexts}
     assert "Texto del iframe local" in texts[fs.url("/local-frame")]
-    assert "Error:" in texts["https://cross-frame.test/content"]
+    assert "Error:" in texts["http://127.0.0.1:9/content"]
 
 
 def test_e2e_frames_skipped_when_disabled(fs):
@@ -61,6 +61,103 @@ def test_e2e_frames_skipped_when_disabled(fs):
     rec = run(scrape_url(base_cfg(fetch_frames=False), fs.url("/frames")))
     assert rec.frames is None
     assert rec.frameTexts is None
+
+
+def test_e2e_frames_redirect_and_robots(fs):
+    from conftest import base_cfg, run, scrape_url
+
+    rec = run(scrape_url(base_cfg(fetch_frames=True), fs.url("/frames-robots")))
+    texts = {t["src"]: t["text"] for t in rec.frameTexts}
+    assert texts[fs.url("/private")] == "Skipped by robots"
+    assert "Texto del iframe local" in texts[fs.url("/redirect")]
+
+
+def test_needs_wait_cases():
+    from growth_scraper.waitcontent import needs_wait
+
+    assert needs_wait("") is False
+    assert needs_wait("no-consent-found") is False
+    assert needs_wait("error") is False
+    assert needs_wait("rejected") is True
+    assert needs_wait("hidden:1") is True
+    assert needs_wait("removed:2") is True
+
+
+def test_wait_for_content_off():
+    import asyncio
+
+    from growth_scraper.config import ScrapeConfig
+    from growth_scraper.waitcontent import wait_for_content
+
+    assert asyncio.run(wait_for_content(None, ScrapeConfig(consent_wait_ms=0))) == "off"
+
+
+def test_wait_for_content_plateau():
+    import asyncio
+
+    from growth_scraper.config import ScrapeConfig
+    from growth_scraper.waitcontent import wait_for_content
+
+    class FakePage:
+        async def evaluate(self, _expr):
+            return 100
+
+    summary = asyncio.run(wait_for_content(FakePage(), ScrapeConfig(consent_wait_ms=5000)))
+    assert summary.startswith("wait ")
+    assert "delta" in summary
+
+
+def test_extract_iframes_cap_after_filter():
+    from growth_scraper.iframes import extract_iframes
+
+    html = "".join(f'<iframe src="data:text/html,{i}"></iframe>' for i in range(5))
+    html += '<iframe src="/real" title="Real"></iframe>'
+    frames = extract_iframes("https://site.com/p", html, max_frames=5)
+    assert len(frames) == 1
+    assert frames[0]["src"] == "https://site.com/real"
+
+
+def test_extract_iframes_skips_non_http_schemes():
+    from growth_scraper.iframes import extract_iframes
+
+    html = ('<iframe src="mailto:x@y.com"></iframe>'
+            '<iframe src="tel:+3491"></iframe>'
+            '<iframe src="file:///etc/passwd"></iframe>'
+            '<iframe src="https://ok.com/f"></iframe>')
+    frames = extract_iframes("https://site.com/p", html, max_frames=5)
+    assert len(frames) == 1
+    assert frames[0]["src"] == "https://ok.com/f"
+
+
+def test_csv_retries_column(tmp_path):
+    import csv
+
+    from growth_scraper.config import Record
+    from growth_scraper.records import CsvWriter
+
+    out = tmp_path / "out.csv"
+    with CsvWriter(str(out)) as w:
+        rec = Record(url="https://x.com")
+        rec.retries = 2
+        w.write(rec)
+    rows = list(csv.reader(out.open(encoding="utf-8")))
+    header = rows[0]
+    assert "retries" in header
+    assert rows[1][header.index("retries")] == "2"
+
+
+def test_protection_detect_bare_429():
+    from growth_scraper import protection
+
+    class Stub:
+        status_code = 429
+        html = "<html><body>Too many requests</body></html>"
+        metadata = {"title": "Rate limited"}
+        response_headers = {"server": "nginx"}
+
+    reason = protection.detect(Stub())
+    assert reason and reason.startswith("PROTECTION_BLOCKED")
+    assert "429" in reason
 
 
 def test_e2e_anti_bot_retry_succeeds(fs):

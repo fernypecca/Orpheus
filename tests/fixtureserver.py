@@ -18,6 +18,8 @@ and don't depend on internet access:
   /gated        consent wall that gates content until rejected (Fase 4)
   /frames        page with cross-origin + same-origin iframes (Fase 4)
   /local-frame   same-origin iframe content (Fase 4)
+  /redirect      302 -> /local-frame (frame fetch follow_redirects, Fase 4)
+  /frames-robots frames incl. a robots-disallowed src + a redirecting src (Fase 4)
   /flaky403      403 that clears after N requests (anti-bot retry, Fase 4)
 """
 
@@ -46,11 +48,17 @@ def build_pages() -> dict:
         "/frames": """<!doctype html><html><head><meta charset="utf-8"><title>Frames</title></head>
 <body><h1>Página con iframes</h1>
 <iframe src="/local-frame" title="Local"></iframe>
-<iframe src="https://cross-frame.test/content" title="Cross"></iframe>
+<iframe src="http://127.0.0.1:9/content" title="Cross"></iframe>
 <p>Texto de la página principal con iframes.</p>
 </body></html>""",
         "/local-frame": """<!doctype html><html><head><meta charset="utf-8"><title>Frame local</title></head>
 <body><p>Texto del iframe local.</p></body></html>""",
+        "/frames-robots": """<!doctype html><html><head><meta charset="utf-8"><title>Frames robots</title></head>
+<body><h1>Frames con robots</h1>
+<iframe src="/private" title="Privado"></iframe>
+<iframe src="/redirect" title="Redirect"></iframe>
+<p>Texto de la página con iframes y robots.</p>
+</body></html>""",
         "/": page(
             "Acme Simple Page",
             """
@@ -343,6 +351,9 @@ class Handler(BaseHTTPRequestHandler):
             if isinstance(html, str):
                 html = html.encode("utf-8")
             self._send(200, html)
+            return
+        if path == "/redirect":
+            self._send(302, b"", headers={"Location": "/local-frame"})
             return
         if path == "/img.png" or path == "/img2.png":
             # 1x1 transparent PNG
