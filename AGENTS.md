@@ -156,6 +156,17 @@ necesita internet. `scripts/` tiene los 5 escenarios + `fixture-check.sh`.
   (default 2). `record.retries` = reintentos reales. robots disallowed → hard
   stop sin retry. Persistencia → `PROTECTION_BLOCKED` (fail-closed). Sin
   evasión.
+- **D37 — 403/429 sin servidor anti-bot también es bloque.** Refina D14: un CDN
+  (cf-ray, server: cloudflare) sirviendo 200 NO es bloqueo, pero un *status*
+  403/429 en el HTML principal (rate limit de nginx/Fastly, IP ban, geo block)
+  siempre es un fallo → `PROTECTION_BLOCKED: HTTP NNN (blocked or rate limited)`.
+  Antes el record salía con status 429, `error: None` y el texto de la página de
+  rate-limit filtrándose a `text` (falla silenciosa).
+- **D38 — Iframes: GET en streaming, redirects seguidos, solo http(s).** El
+  fetch del `src` sigue redirects (`follow_redirects=True`, los embeds suelen
+  redirigir), lee en streaming con cap de 64KB (no baja el body entero), y solo
+  acepta esquemas http/https (nada de `mailto:`/`file:`/`data:`). El cap de
+  `max_frames` se aplica DESPUÉS de filtrar los srcs descartables.
 
 ## Estado de los "problemas conocidos" del brief
 
@@ -221,7 +232,7 @@ server mode).
 
 Fase 3 (output enriquecido): `uv run pytest tests/test_meta.py -q` → 16 passed (unit idioma/metadata, e2e `/meta-rich`, screenshot PNG, CSV `language`, CLI `--screenshots`).
 
-Fase 4 (cobertura): `uv run pytest tests/test_coverage.py -q` → 8 passed (config/`to_dict`, e2e `/gated` contenido tras dismiss, e2e `/frames` reporte + `frameTexts`, e2e `/flaky403` retry acotado).
+Fase 4 (cobertura): `uv run pytest tests/test_coverage.py -q` → 16 passed (config/`to_dict`, e2e `/gated` contenido tras dismiss, e2e `/frames` reporte + `frameTexts` + redirect + robots-skip, e2e `/flaky403` retry acotado, regla 429 limpia, CSV `retries`, waitcontent unit).
 
 ### Validación live (con internet disponible, jun 2026)
 
