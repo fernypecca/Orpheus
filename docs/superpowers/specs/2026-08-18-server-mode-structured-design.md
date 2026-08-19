@@ -1,20 +1,19 @@
 # Spec — Modo servidor (`gscrape serve`) + Extracción estructurada (`structured`)
 
 - **Fecha**: 2026-08-18
-- **Estado**: aprobado (diseño), a la espera de plan de implementación
-- **Repo**: `growth-scraper` (`~/.claude/scripts/growth-scraper`)
-- **Consumidores afectados**: `orpheus.sh`, storefront-analyzer (`tryGscrape`), landing-qa-tool
+- **Estado**: aprobado (diseño), implementado
+- **Repo**: `Orpheus` (`growth-scraper`)
 
 ## 1. Contexto y problema
 
 El scraper es maduro y $0 (local, Crawl4AI/Playwright), pero tiene dos dolores reales:
 
-1. **Integración cara**: cada fetch de una tool TS spawnea `uv run gscrape` (arranque
-   frío de uv + Playwright) con timeout de 90s. Para análisis multi-URL (un listing +
-   N profiles) el coste de arranque se multiplica.
-2. **Payload pobre para análisis**: storefront-analyzer parsea `text` crudo para sacar
-   precio/rating/categoría. Los datos estructurados (schema.org, microdata, meta) existen
-   en el HTML pero el record no los expone.
+1. **Integración cara**: cada fetch de un cliente externo spawnea `uv run gscrape`
+   (arranque frío de uv + Playwright) con timeout de 90s. Para análisis multi-URL (un
+   listing + N profiles) el coste de arranque se multiplica.
+2. **Payload pobre para análisis**: parsear `text` crudo para sacar
+   precio/rating/categoría es frágil. Los datos estructurados (schema.org, microdata,
+   meta) existen en el HTML pero el record no los expone.
 
 Este spec añade (a) un **server mode** con browser caliente y cache compartido, y (b) un
 **extractor estructurado** schema-aware. Ambas fases se diseñan juntas; la cobertura de
@@ -25,8 +24,8 @@ SPAs y screenshots quedan fuera de alcance.
 - **O1** — `gscrape serve`: daemon local (127.0.0.1) que reutiliza un único
   `AsyncWebCrawler` y sirve single-URL scrapes por HTTP, con cache fast-path y control
   de concurrencia.
-- **O2** — `orpheus.sh` híbrido: intenta el server primero; si no responde, spawnea
-  `uv run gscrape` como hoy. Contrato de salida sin cambios. Wrappers TS intactos.
+- **O2** — cliente de referencia híbrido: intenta el server primero; si no responde,
+  spawnea `uv run gscrape` como hoy. Contrato de salida sin cambios.
 - **O3** — `structured.py`: extrae entidades estructuradas del HTML crudo
   (JSON-LD → microdata → meta/OG → heurística) y las expone en el record, en `summary`
   (triage barato) y en el CSV mirror.
@@ -41,7 +40,7 @@ SPAs y screenshots quedan fuera de alcance.
   El server es single-URL por diseño (YAGNI para el caso de uso del wrapper).
 - `--export-images` en el server (escribe a disco del server; se queda en CLI).
 - Evasión anti-bot / CAPTCHA (guardrail existente, no se toca).
-- Cambios en el contrato de salida de `orpheus.sh` ni en `tryOrpheus`/`tryGscrape`.
+- Cambios en el contrato de salida del cliente de referencia.
 
 ## 4. Decisiones clave
 
@@ -90,10 +89,10 @@ uv run gscrape serve [--port 8743] [--cache-dir DIR] [--max-concurrency 4] [--to
   Se mapean a la config del pipeline; campos desconocidos se ignoran con warning.
 - Respuesta de error de contrato: `400` si falta `url`/no es string/URL inválida;
   `500` si el scrape lanza excepción no esperada. El cuerpo es `{error: str}`.
-- El server devuelve el **mismo shape de record** que la CLI (para que `orpheus.sh`
-  reutilice el tail de parsing).
+- El server devuelve el **mismo shape de record** que la CLI (para que el cliente
+  de referencia reutilice el tail de parsing).
 
-### 5.2 `orpheus.sh` híbrido
+### 5.2 Cliente de referencia híbrido
 
 Flujo nuevo (delante de la ruta actual, que queda intacta como fallback):
 
@@ -110,8 +109,8 @@ Flujo nuevo (delante de la ruta actual, que queda intacta como fallback):
 5. `--out FILE` escribe el record JSONL también en la ruta server.
 
 Contrato de salida **sin cambios**: exit 0 + texto limpio en stdout / exit 1 + mensaje
-stderr (el caller cae a Firecrawl). `tryOrpheus`/`tryGscrape` de storefront-analyzer y
-landing-qa-tool **no se tocan**.
+stderr (el caller cae al siguiente tier de scraping). Los consumidores existentes
+**no se tocan**.
 
 > Nota: `--max-time` usa `ORPHEUS_TIMEOUT_S` (90) porque `/scrape` puede tardar hasta
 > `page_timeout` + retries. El "connection refused" es inmediato, así que el fallback
@@ -218,8 +217,8 @@ landing-qa-tool **no se tocan**.
 - **Los 24 tests actuales siguen en verde** (`uv run pytest tests/ -q`).
 - `scripts/fixture-check.sh` → PASS (no debe romper los 5 escenarios).
 - `scripts/scenario-server.sh` (live): levanta `gscrape serve` en background →
-  `orpheus.sh python.org` (ruta server, exit 0 + texto), 2ª corrida con cache
-  (`fromCache`), matar el server → `orpheus.sh` cae a spawn y devuelve lo mismo.
+  cliente python.org (ruta server, exit 0 + texto), 2ª corrida con cache
+  (`fromCache`), matar el server → el cliente cae a spawn y devuelve lo mismo.
 
 ## 6. Criterios de éxito / verificación
 
@@ -227,7 +226,7 @@ landing-qa-tool **no se tocan**.
    `test_server`).
 2. `scripts/fixture-check.sh` → PASS.
 3. `scripts/scenario-server.sh` → PASS (ruta server, cache, fallback a spawn).
-4. Live: `orpheus.sh https://www.python.org` con server arriba → texto en stdout,
+4. Live: `https://www.python.org` con server arriba → texto en stdout,
    exit 0; con server abajo (o `GSCRAPE_SKIP_SERVER=1`) → mismo texto vía spawn.
 5. Live: página de proveedor con schema (JSON-LD o microdata) → el record incluye
    `structured` con price/rating/category y el CSV con las columnas nuevas.
@@ -242,12 +241,11 @@ landing-qa-tool **no se tocan**.
 | `src/growth_scraper/config.py` | selectores heurísticos `STRUCTURED_*`, campo `structured` en `Record`, port default |
 | `src/growth_scraper/pipeline.py` | hook `extract_structured` + campos triage en `_build_summary` |
 | `src/growth_scraper/records.py` | columnas CSV nuevas |
-| `~/.claude/scripts/orpheus.sh` | ruta server-híbrida + fallback |
 | `tests/fixtureserver.py` | rutas `/structured-*` |
 | `tests/test_structured.py` | **nuevo** |
 | `tests/test_server.py` | **nuevo** |
 | `scripts/scenario-server.sh` | **nuevo** (live) |
-| `README.md` / `AGENTS.md` | documentación: `serve`, `structured`, wrapper híbrido |
+| `README.md` / `AGENTS.md` | documentación: `serve`, `structured`, cliente híbrido |
 
 ## 8. Preguntas abiertas
 

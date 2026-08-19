@@ -133,7 +133,7 @@ necesita internet. `scripts/` tiene los 5 escenarios + `fixture-check.sh`.
   null`. Nunca rompe el record. `source` = primera fuente con ≥1 campo (jsonld >
   microdata > meta > heuristic).
 - **D29 — Server single-URL y solo loopback.** SSRF documentado; `--token` opcional.
-  `orpheus.sh` intenta el server primero y cae a spawn si no responde.
+  El cliente de referencia intenta el server primero y cae a spawn si no responde.
 - **D30** — Idioma fail-open sin dependencias: `<html lang>` → `content-language` → stopwords (texto ≥80 palabras, ratio ≥0.05, margen 1.5×). Sin señal → `None`.
 - **D31** — `meta` es un campo de shape estable (keys con `null`), separado del triage de `summary` (solo `language` ahí y en CSV).
 - **D32** — Screenshots solo CLI (`--screenshots DIR`), PNG full-page en disco, campo puntero `screenshots`; el server nunca escribe a disco.
@@ -273,27 +273,14 @@ Fase 4 (cobertura): `uv run pytest tests/test_coverage.py -q` → 16 passed (con
 - **faq (P0)** → el contenido que solo vive tras un XHR aparece en `text` y en
   `apiResponses` (`/api/faq`).
 
-### Integración downstream (llm-batch.py)
+### Consumo del output (downstream LLM)
 
-`python3 ~/.claude/scripts/llm-batch.py -i <jsonl> --jsonl-field text -p @prompt.md -o out.jsonl`
-lee nuestro campo `text` y procesa el lote real contra Groq/NVIDIA (claves en
-`~/.claude/.env`). Probado: 3/3 ok con groq `openai/gpt-oss-20b` y nvidia
-(Nemotron). Nota: páginas grandes (wikipedia, ~60KB) exceden el TPM de tiers
-bajos → para producción, recortar `text` o usar modelos con TPM alto.
-
-### Consumo downstream (wrappers estandarizados)
-
-Regla global: **Orpheus first, Firecrawl fallback** — no reinventar el shell-out.
-
-- Shell universal: `~/.claude/scripts/orpheus.sh <url> [--max-chars N] [--out FILE] [-- <flags>]`
-  → texto limpio en stdout, exit 0; exit 1 + mensaje en stderr (caer a Firecrawl).
-  Usa `ORPHEUS_DIR` (default `~/.claude/scripts/growth-scraper`), `ORPHEUS_TIMEOUT_S`
-  y `GSCRAPE_PORT`; server mode primero, fallback a spawn.
-- TS: `tryOrpheus(url, maxChars)` en `lib/orpheus.ts` (shell-out vía `ORPHEUS_DIR`
-  o hosted vía `ORPHEUS_URL`). Null = fail-closed, el caller cae al siguiente tier.
-- No aplica a: APIs JSON/XML (RSS, Meta GraphQL) — usar `fetch`; sitios protegidos
-  (Meta Ad Library) — usar Playwright. CLIs conocidos: G2 (Cloudflare),
-  Trustpilot/Google News (robots.txt).
+El campo `text` es el que se envía a los LLMs (name estable, no cambia). Un lote
+de URLs scrapeadas se procesa con cualquier herramienta de batch que lea JSONL
+apuntando a `text` (p. ej. `python -c`/`jq` para filtrar por `summary` antes de
+enviar, o el `--jsonl-field text` de la capa de batch). Nota: páginas grandes
+(wikipedia, ~60KB) exceden el TPM de tiers bajos → para producción, recortar
+`text` (`--max-text-chars`) o usar modelos con TPM alto.
 
 ### Bugs reales cazados en la validación live
 

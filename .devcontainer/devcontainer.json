@@ -1,0 +1,16 @@
+{
+  "name": "Orpheus (gscrape) — polite LLM-ready scraper",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "features": {
+    "ghcr.io/astral-sh/uv:latest": {}
+  },
+  "postCreateCommand": "uv sync && uv run playwright install-deps chromium && uv run playwright install chromium",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+        "python.terminal.activateEnvironment": false
+      }
+    }
+  }
+}

@@ -1,8 +1,9 @@
 [project]
 name = "growth-scraper"
 version = "0.1.0"
-description = "Generic, polite, LLM-ready web scraper for growth marketing research. Built on Crawl4AI."
+description = "Orpheus — polite, LLM-ready web scraper for growth marketing research. Built on Crawl4AI."
 requires-python = ">=3.12"
+authors = [{ name = "Fer", url = "https://github.com/fernypecca" }]
 dependencies = [
     "crawl4ai>=0.9",
     "fastapi>=0.115",

@@ -1,9 +1,24 @@
-# gscrape — polite, LLM-ready web scraper
+# Orpheus (`gscrape`) — polite, LLM-ready web scraper
 
 Generic web scraper for growth-marketing research (competitors, provider
 directories, marketplaces). Built on **Crawl4AI 0.9.x** (Playwright underneath).
 Cost ≈ $0: runs on your machine and produces JSONL that feeds free LLMs
-(Nemotron vía NVIDIA, Groq) directly.
+(Nemotron via NVIDIA, Groq) directly.
+
+## Try it in one click (no install)
+
+Open this repo in a GitHub Codespace and run the demo — the browser engine is
+already set up:
+
+[![Open in GitHub Codespaces](https://img.shields.io/badge/Open%20in%20Codespaces-1-click-181717?logo=github&style=flat-square)](https://codespaces.new/fernypecca/Orpheus)
+
+```bash
+# inside the Codespace, after it finishes booting:
+scripts/demo.sh
+```
+
+`scripts/demo.sh` scrapes a real site, prints the clean LLM-ready text, and
+writes the full JSONL record so you can inspect every field.
 
 ## Install
 
@@ -79,8 +94,8 @@ Output is **JSONL, one record per page**:
 }
 ```
 
-The downstream `llm-batch.py` reads `--jsonl-field text` — the field name is
-**`text`**, unchanged. `summary` gives you cheap triage fields to filter before
+Any downstream LLM batch tool reads the `text` field (the field name is
+**`text`**, unchanged). `summary` gives you cheap triage fields to filter before
 sending anything to an LLM, and `--csv` mirrors them to a spreadsheet.
 
 Records also carry a `structured` field (best-effort, fail-open) extracted from
@@ -142,8 +157,8 @@ La columna `retries` también aparece en el CSV cuando usas `--csv`.
 
 ## Server mode (warm browser)
 
-For consumers that scrape many URLs in a row (the TS wrappers via `orpheus.sh`),
-run a persistent server instead of spawning a cold process per URL:
+For consumers that scrape many URLs in a row, run a persistent server instead
+of spawning a cold process per URL:
 
 ```bash
 uv run gscrape serve                # 127.0.0.1:8743
@@ -154,16 +169,16 @@ uv run gscrape serve --port 9000 --cache-dir .cache --token secret
 - `POST /scrape` → `{"url": "...", "options": {...}}` → the same record shape as the CLI.
   Options: `maxTextChars`, `fitText`, `ignoreRobots`, `noConsent`, `noExpand`, `noApis`,
   `maxRetries`, `maxApiResponses`, `cacheDir`, `rawHtml`, `fetchFrames`,
-  `consentWaitMs`, `antiBotRetries`, `antiBotBackoff`. (`orpheus.sh` sends
-  `fetchFrames: false` — it only needs `text`, so iframe capture is skipped.)
+  `consentWaitMs`, `antiBotRetries`, `antiBotBackoff`.
 - With `--cache-dir` (server or per-request `cacheDir`), a cached URL returns
   immediately with `"fromCache": true`.
 - Optional `--token` (send `Authorization: Bearer <token>`). Binds to 127.0.0.1 only —
   do not expose publicly (SSRF).
 
-The wrapper `orpheus.sh` uses the server automatically and falls back to spawning
-`uv run gscrape` when the server is not running (set `GSCRAPE_SKIP_SERVER=1` to force
-the spawn path). The exit-0/text contract is unchanged.
+Any HTTP client can use the server. The reference client in this repo (used by
+`scripts/scenario-server.sh`) calls `POST /scrape` and falls back to spawning
+`uv run gscrape` when the server is not running. The exit-0/text contract is
+unchanged.
 
 ## CLI
 
@@ -235,9 +250,9 @@ scripts/scenario4-blocked.sh                 # e.g. https://nowsecure.nl
 scripts/scenario5-cache.sh                   # --cache-dir
 
 # 6. Server mode: warm path, cache fast-path, spawn fallback
-scripts/scenario-server.sh                   # gscrape serve + orpheus.sh
+scripts/scenario-server.sh                   # gscrape serve + HTTP client
 
-# Offline deterministic version of all 5 (local fixture server, no internet):
+# Offline deterministic version of all scenarios (local fixture server, no internet):
 scripts/fixture-check.sh
 ```
 
@@ -263,3 +278,8 @@ scripts/fixture-check.sh
 ## License / credits
 
 Apache-2.0. Built on [Crawl4AI](https://github.com/unclecode/crawl4ai).
+
+---
+
+Built by [Fer](https://github.com/fernypecca) as an open-source foundation for
+conversion-focused marketing research tools.

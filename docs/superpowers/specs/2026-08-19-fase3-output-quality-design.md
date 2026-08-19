@@ -1,9 +1,9 @@
 # Spec — Fase 3: Calidad de output (idioma, metadata rica, screenshots)
 
 - **Fecha**: 2026-08-19
-- **Estado**: aprobado (diseño), a la espera de plan de implementación
-- **Repo**: `growth-scraper` (`~/.claude/scripts/growth-scraper`)
-- **Consumidores afectados**: record JSON (todas las tools), CSV mirror, `orpheus.sh` (contrato intacto), TS wrappers (`tryOrpheus` intactos)
+- **Estado**: aprobado (diseño), implementado
+- **Repo**: `Orpheus` (`growth-scraper`)
+- **Consumidores afectados**: record JSON (todas las tools), CSV mirror, contrato del cliente de referencia (intacto)
 
 ## 1. Contexto y problema
 
@@ -32,7 +32,7 @@ Las Fases 1+2 (server mode + extracción estructurada) dejaron el record con `te
 
 - OCR ni extracción de texto desde el screenshot.
 - Traducción del contenido.
-- Cambios en `structured.py`, server mode, ni en el contrato de `orpheus.sh`.
+- Cambios en `structured.py`, server mode, ni en el contrato del cliente de referencia.
 - Screenshots vía server (escribe a disco del server; se queda en CLI, igual que
   `--export-images`).
 - Base64 inline de screenshots en el record (payload autocontenido pero grande).
@@ -137,4 +137,4 @@ Las Fases 1+2 (server mode + extracción estructurada) dejaron el record con `te
 
 - Record JSON: campos nuevos aditivos (`meta`, `screenshots`, `summary.language`).
 - CSV: columna nueva `language`.
-- `orpheus.sh` / `tryOrpheus`: contrato intacto.
+- Cliente de referencia: contrato intacto.

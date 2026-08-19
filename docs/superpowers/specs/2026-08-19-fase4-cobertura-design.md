@@ -1,9 +1,9 @@
 # Spec — Fase 4: Cobertura (consent walls SPA, iframes cross-origin, anti-bot intermitente)
 
 - **Fecha**: 2026-08-19
-- **Estado**: aprobado (diseño), a la espera de plan de implementación
-- **Repo**: `growth-scraper` (`~/.claude/scripts/growth-scraper`)
-- **Consumidores afectados**: record JSON (campos aditivos), CSV (solo `retries`), `orpheus.sh` (contrato intacto: sigue leyendo solo `text`/`error`)
+- **Estado**: aprobado (diseño), implementado
+- **Repo**: `Orpheus` (`growth-scraper`)
+- **Consumidores afectados**: record JSON (campos aditivos), CSV (solo `retries`), cliente de referencia (contrato intacto: sigue leyendo solo `text`/`error`)
 
 ## 1. Contexto y problema
 
@@ -35,7 +35,7 @@ Tres huecos de cobertura detectados en sitios reales:
 - `robots.txt` disallowed: sigue siendo hard stop, sin reintentos.
 - Acceder al DOM de iframes cross-origin (same-origin policy no se vulnera; solo se
   hace un GET al `src`).
-- Cambios en el contrato de `orpheus.sh` ni en los campos que Orpheus ya lee.
+- Cambios en el contrato del cliente de referencia ni en los campos que ya lee.
 
 ## 4. Decisiones clave
 
@@ -116,8 +116,8 @@ Record:
 CLI:
 - `--no-frames` → `fetch_frames=False`.
 - `--consent-wait-ms N` y `--anti-bot-retries N`/`--anti-bot-backoff N` opcionales.
-- Sin flags para screenshots/iframes en `orpheus.sh` → defaults: cero coste extra en
-  sitios sin consent/iframes/anti-bot.
+- Sin flags para screenshots/iframes en el cliente de referencia → defaults: cero
+  coste extra en sitios sin consent/iframes/anti-bot.
 
 ### 5.5 Fixtures
 
@@ -147,11 +147,11 @@ Nuevas rutas en `tests/fixtureserver.py`:
 - `bash scripts/fixture-check.sh` → PASS.
 - Smoke live (si hay internet): `uv run gscrape <url-con-consent> -o /tmp/x.jsonl`
   → texto completo tras dismiss; `<url-con-embeds>` → `frames`/`frameTexts`.
-- `orpheus.sh` contract: `bash ~/.claude/scripts/orpheus.sh https://www.python.org`
-  → exit 0 + texto (regresión del wrapper).
+- Contrato del cliente: `curl http://127.0.0.1:8743/scrape` (server) → exit 0 + texto;
+  server caído → spawn fallback (regresión del cliente de referencia).
 
 ## 7. Consumidores afectados
 
 - Record JSON: campos aditivos (`frames`, `frameTexts`, `retries`).
 - CSV: columna nueva `retries`.
-- `orpheus.sh` / `tryOrpheus`: contrato intacto (solo leen `text`/`error`).
+- Cliente de referencia: contrato intacto (solo lee `text`/`error`).
