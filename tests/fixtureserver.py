@@ -59,6 +59,14 @@ def build_pages() -> dict:
 <iframe src="/redirect" title="Redirect"></iframe>
 <p>Texto de la página con iframes y robots.</p>
 </body></html>""",
+        "/frames-title": """<!doctype html><html><head><meta charset="utf-8"><title>Frames title</title></head>
+<body><h1>Frames con título</h1>
+<iframe src="/frame-title" title="Video"></iframe>
+<iframe src="https://www.googletagmanager.com/ns.html?id=GTM-TEST" title="GTM"></iframe>
+<p>Texto de la página con iframes y título.</p>
+</body></html>""",
+        "/frame-title": """<!doctype html><html><head><meta charset="utf-8"><title>Mi Video Embed</title></head>
+<body></body></html>""",
         "/": page(
             "Acme Simple Page",
             """

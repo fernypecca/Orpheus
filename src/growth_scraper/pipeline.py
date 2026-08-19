@@ -333,7 +333,9 @@ class Pipeline:
                 result = await self.crawler.arun(url, config=run_cfg)
                 if result is None:
                     raise RuntimeError("crawl4ai returned no result")
-                status = getattr(result, "status_code", None)
+                status = getattr(result, "redirected_status_code", None)
+                if status is None:
+                    status = getattr(result, "status_code", None)
                 if status in (403, 429) and attempt < attempts - 1:
                     emit_progress(cfg.verbose, f"retry {url}: status {status} (attempt {attempt + 1}/{attempts})")
                     result = None
@@ -369,7 +371,12 @@ class Pipeline:
             record.error = f"CRAWL_ERROR: {last_exc or 'no result after retries'}"
             return record
 
-        record.statusCode = getattr(result, "status_code", None)
+        status = getattr(result, "redirected_status_code", None)
+        if status is None:
+            status = getattr(result, "status_code", None)
+        record.statusCode = status
+        final_url = getattr(result, "redirected_url", None)
+        record.finalUrl = final_url or url
         if record.statusCode is not None and record.statusCode >= 500:
             record.error = f"HTTP_ERROR: {record.statusCode} after {attempts} attempt(s)"
             emit_progress(cfg.verbose, record.error)

@@ -22,6 +22,33 @@ _CONCURRENCY = 3
 _MAX_FRAME_TEXT = 2000
 _MAX_FRAME_BYTES = 65_536
 
+# Tracking/analytics/tag-manager hosts whose iframes carry no content value
+# (e.g. GTM's noscript iframe appears on every page). Filtered out so they
+# neither appear in `frames` nor get fetched.
+_TRACKER_HOSTS = frozenset(
+    host.lstrip(".")
+    for host in (
+        "googletagmanager.com",
+        "google-analytics.com",
+        "googlesyndication.com",
+        "doubleclick.net",
+        "googleadservices.com",
+        "facebook.net",
+        "facebook.com/tr",
+        "hotjar.com",
+        "crazyegg.com",
+        "clarity.ms",
+    )
+)
+
+
+def _is_tracker(src: str) -> bool:
+    host = urlparse(src).netloc.lower().split(":")[0]
+    for tracker in _TRACKER_HOSTS:
+        if host == tracker or host.endswith("." + tracker):
+            return True
+    return False
+
 
 def extract_iframes(url: str, html: str, max_frames: int = _MAX_FRAMES):
     """Return a list of {src, title, crossOrigin} for the page's iframes."""
@@ -34,6 +61,8 @@ def extract_iframes(url: str, html: str, max_frames: int = _MAX_FRAMES):
                 continue
             src = urljoin(url, src)
             if urlparse(src).scheme not in ("http", "https"):
+                continue
+            if _is_tracker(src):
                 continue
             frame_origin = urlparse(src).netloc
             page_origin = urlparse(url).netloc
@@ -69,7 +98,40 @@ async def _polite_get_text(url: str, headers: dict) -> str:
     from bs4 import BeautifulSoup
 
     soup = BeautifulSoup(b"".join(chunks).decode("utf-8", errors="replace"), "html.parser")
-    return soup.get_text(" ", strip=True)
+    text = soup.get_text(" ", strip=True)
+    if not text:
+        text = _extract_title(soup, url)
+    return text
+
+
+_GENERIC_TITLES = frozenset(
+    {"just a moment", "attention required", "verify you are human", "access denied"}
+)
+
+
+def _extract_title(soup, url: str) -> str:
+    """Best title for a frame that renders no text (e.g. a video embed).
+
+    Prioritizes og:title / meta name=title, then <title>. Skips generic shells
+    ("just a moment", "YouTube") and the host's own brand, so we never return a
+    misleading label for an empty shell.
+    """
+    candidates = []
+    for attr in ("property", "name"):
+        for val in ("og:title", "title", "twitter:title"):
+            tag = soup.find("meta", attrs={attr: val})
+            if tag and tag.get("content"):
+                candidates.append(tag["content"].strip())
+    if soup.title and soup.title.string:
+        candidates.append(soup.title.string.strip())
+    host = urlparse(url).netloc.lower().split(":")[0]
+    parts = host.split(".")
+    brand = parts[-2] if len(parts) >= 2 else host
+    for c in candidates:
+        low = c.lower()
+        if low and low != brand and low not in _GENERIC_TITLES:
+            return c
+    return ""
 
 
 async def fetch_frame_texts(srcs, cfg, robots, limit: int = _MAX_FRAME_TEXT):

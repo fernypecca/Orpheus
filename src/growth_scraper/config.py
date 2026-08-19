@@ -222,6 +222,7 @@ class Record:
     crawledFrom: Optional[str] = None
     scrapedAt: str = ""
     statusCode: Optional[int] = None
+    finalUrl: Optional[str] = None
     protectionBlocked: bool = False
     rawHtml: Optional[str] = None
     structured: Optional[dict] = None
@@ -246,6 +247,7 @@ class Record:
             "crawledFrom": self.crawledFrom,
             "scrapedAt": self.scrapedAt,
             "statusCode": self.statusCode,
+            "finalUrl": self.finalUrl,
             "protectionBlocked": self.protectionBlocked,
             "structured": self.structured,
             "meta": self.meta,

@@ -28,7 +28,9 @@ def detect(result) -> str | None:
     title = ""
     if result.metadata:
         title = (result.metadata.get("title") or "").lower()
-    status = getattr(result, "status_code", None)
+    status = getattr(result, "redirected_status_code", None)
+    if status is None:
+        status = getattr(result, "status_code", None)
     server = (headers.get("server") or headers.get("Server") or "").lower()
     datadome = (headers.get("x-datadome") or headers.get("X-Datadome") or "").lower()
 

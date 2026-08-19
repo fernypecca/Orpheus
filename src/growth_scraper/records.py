@@ -45,7 +45,7 @@ class CsvWriter:
         "url", "title", "pageType", "domain", "metaDescription", "h1",
         "wordCount", "itemCount", "statusCode", "retries", "error", "text_preview",
         "structuredSource", "structuredPrice", "structuredRatingValue",
-        "structuredReviewCount", "structuredCategory", "language",
+        "structuredReviewCount", "structuredCategory", "language", "finalUrl",
     ]
 
     def __init__(self, path: str):
@@ -76,6 +76,7 @@ class CsvWriter:
             s.get("structuredReviewCount", ""),
             s.get("structuredCategory", ""),
             s.get("language", ""),
+            record.finalUrl or "",
         ])
         self._fh.flush()
 

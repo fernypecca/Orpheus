@@ -72,6 +72,24 @@ def test_e2e_frames_redirect_and_robots(fs):
     assert "Texto del iframe local" in texts[fs.url("/redirect")]
 
 
+def test_e2e_redirect_captures_final_url(fs):
+    from conftest import base_cfg, run, scrape_url
+
+    rec = run(scrape_url(base_cfg(), fs.url("/redirect")))
+    assert rec.statusCode == 200
+    assert rec.finalUrl == fs.url("/local-frame")
+    assert "Texto del iframe local" in rec.text
+
+
+def test_e2e_frame_title_fallback_and_tracker_filter(fs):
+    from conftest import base_cfg, run, scrape_url
+
+    rec = run(scrape_url(base_cfg(fetch_frames=True), fs.url("/frames-title")))
+    assert len(rec.frames) == 1
+    assert "googletagmanager.com" not in rec.frames[0]["src"]
+    assert rec.frameTexts[0]["text"] == "Mi Video Embed"
+
+
 def test_needs_wait_cases():
     from growth_scraper.waitcontent import needs_wait
 
