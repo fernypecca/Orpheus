@@ -200,6 +200,18 @@ necesita internet. `scripts/` tiene los 5 escenarios + `fixture-check.sh`.
   `.github/workflows/test.yml` corre el suite completo en cada PR/push a
   `main`, y un ruleset de GitHub exige ese check en verde antes de mergear —
   aplica a cualquier clone, no a uno.
+- **D42 — `capture_network_requests=False`.** Estaba en `True`: el capturador
+  propio de crawl4ai, redundante con `netrec.py` (ver D4 — netrec.py existe
+  *porque* el de crawl4ai "no da bodies de forma fiable") y sin ningún
+  consumidor en el código (verificado: cero referencias fuera de este flag).
+  Tenerlo prendido no era solo trabajo de más: pisaba un bug real de
+  `crawl4ai` (`async_crawler_strategy.py`) — cuando `response.text()` falla
+  (body vacío/binario, ej. beacons de tracking), la rama `except` deja
+  `text_body` sin asignar (`# text_body = None`, comentado) pero el dict de
+  abajo lo referencia igual → `UnboundLocalError`, atrapado un nivel arriba y
+  logueado como warning `[CAPTURE]`. Salía en cada corrida contra bodas.net
+  (su endpoint de tracking). Verificado en vivo: `pageType`/`structured`/
+  `apiResponses` sin cambios tras apagarlo (netrec.py sigue capturando igual).
 
 ## Estado de los "problemas conocidos" del brief
 

@@ -198,7 +198,15 @@ class Pipeline:
         )
         run_kwargs = dict(
             cache_mode=CacheMode.BYPASS,
-            capture_network_requests=True,
+            # False, not True: this is crawl4ai's own request/response capture,
+            # separate from and redundant with netrec.py (D4 — built netrec.py
+            # specifically because this one "no da bodies de forma fiable").
+            # Nothing reads its output. Leaving it on did real, wasted work on
+            # every request/response AND hit a crawl4ai bug on non-text bodies
+            # (UnboundLocalError on `text_body`, logged as a [CAPTURE] warning
+            # on every page with an empty/binary response — e.g. tracking
+            # beacons like bodas.net's /trace/internalTracking.php).
+            capture_network_requests=False,
             remove_consent_popups=False,  # we handle consent ourselves (reject-only)
             wait_until="load",
             page_timeout=cfg.page_timeout_ms,
