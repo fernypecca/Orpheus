@@ -221,11 +221,40 @@ async def handle_consent(page, iterations: int = 3) -> str:
     Never clicks accept.
     """
     last = "no-consent-found"
-    for _ in range(iterations):
+    for i in range(iterations):
         try:
             last = await page.evaluate(_CONSENT_JS) or "no-consent-found"
         except Exception:
             return "error"
+        # Some CMPs load their popup well after the page itself (Didomi, seen
+        # live on decathlon.fr: the initial HTML only carries a `didomiApiKey`
+        # config value, no popup markup yet — that's injected later by its
+        # SDK). Only pay for this on the *second chance*, after a first quick
+        # attempt already came back empty, and keep the bound modest (800ms,
+        # down from an initial 2500ms): an unconditional up-front 2.5s wait
+        # cost the whole test suite +137s (365s -> 502s), and even paying
+        # that didn't end up fixing the motivating case below — a short,
+        # second-chance-only wait is the honest trade-off for "some help with
+        # slow CMPs" vs. "every page pays a tax for no confirmed benefit".
+        #
+        # Known unresolved case, not a regression: this does NOT fix
+        # decathlon.fr. `wait_for_selector` finds *something* there (debugged
+        # live), but it's some other element on the page that also matches
+        # the broad `[class*="cookie"/"consent"/...]` selector — the real
+        # `didomi-popup-*` element never attaches in a headless Orpheus run,
+        # even though it renders fine in an interactive browser session. Root
+        # cause not found (fingerprint-based suppression of the popup for
+        # automated traffic is the working theory, unconfirmed). Not chased
+        # further because it isn't actually harmful there: no consent text
+        # leaked into `text` either way, and real content/structured data
+        # still came through (verified live — see D44). Kept as a real,
+        # modest improvement for CMPs that genuinely just load a bit late.
+        if last == "no-consent-found" and i == 0:
+            try:
+                await page.wait_for_selector(container_query(), state="attached", timeout=800)
+            except Exception:
+                pass  # no CMP on this page, or it never showed up
+            continue
         # If we clicked reject, let the site's own JS dismiss the banner; then
         # check it actually went away. Manipulating the DOM after a working
         # reject can break SPA frameworks (seen live on ionos.es), so we stop

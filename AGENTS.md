@@ -226,6 +226,39 @@ necesita internet. `scripts/` tiene los 5 escenarios + `fixture-check.sh`.
   que el VPS esté arriba). `--concurrency` de `--crawl` (BFS, código
   separado del server) **no se tocó** — mismo riesgo en teoría, pero sin
   evidencia propia todavía, no se cambió a ciegas.
+- **D44 — Cobertura multi-idioma real, probada contra un sitio nuevo (no
+  bodas.net).** Toda la validación hasta ahora fue contra un solo sitio, un
+  solo CMP (OneTrust), un solo idioma (español). Contra decathlon.fr (Didomi,
+  francés) salieron dos gaps reales:
+  - `REJECT_TEXT_PATTERNS`/`ACCEPT_TEXT_PATTERNS` tenían inglés y español
+    nada más. El botón real decía "Continuer sans accepter" — cero variantes
+    en francés. Confirmado inspeccionando el DOM en vivo. Sumado FR, IT, PT
+    (mercados de `localizador`) y DE (común en flujos de consentimiento UE)
+    a las dos listas, simétrico.
+  - `handle_consent` no esperaba nada entre iteraciones cuando no encontraba
+    el banner — 3 pasadas casi instantáneas. En una página pesada (Didomi
+    tarda en inyectar su popup tras cargar su SDK), las 3 pasadas terminaban
+    antes de que el popup existiera. Cambiado a esperar la señal real
+    (`page.wait_for_selector` sobre el contenedor) en vez de un sleep fijo
+    adivinado — pero **medido, no asumido**: la primera versión esperaba
+    2.5s por adelantado en cada página, y le costó al suite completo +137s
+    (365s → 502s), porque la mayoría de páginas no tiene ningún CMP o ya lo
+    tiene cargado cuando se chequea. Rediseñado a "segunda oportunidad":
+    intenta rápido primero (como antes), y solo si esa primera pasada no
+    encuentra nada, espera hasta 800ms antes de reintentar. Costo final
+    medido: +44s sobre el suite completo (365s → 408.55s) — mucho más
+    razonable para un beneficio que, para colmo, ni siquiera cierra el caso
+    de abajo.
+  - **Ninguno de los dos cerró el caso de decathlon.fr del todo**: el
+    `wait_for_selector` sí encuentra *algo* ahí, pero no es el popup real de
+    Didomi (`didomi-popup-*` nunca se adjunta al DOM en una corrida headless
+    de Orpheus, aunque sí se ve en un browser interactivo normal — sospecha
+    sin confirmar: el sitio o el SDK de Didomi suprime el popup para tráfico
+    automatizado). No se persiguió más porque **no genera daño real**:
+    verificado en vivo que ni el texto del banner se filtra a `text` ni el
+    contenido real queda bloqueado (11.976 caracteres reales, `pageType:
+    profile`, `structured.source: jsonld` con precio/rating — todo llegó
+    bien). Documentado como límite conocido, no como bug abierto.
 
 ## Estado de los "problemas conocidos" del brief
 
@@ -255,6 +288,11 @@ necesita internet. `scripts/` tiene los 5 escenarios + `fixture-check.sh`.
   propio texto al markdown y no siempre se puede limpiar SIN aceptar. La regla
   "nunca aceptar" impide desbloquear la página; es una limitación inherente.
   Para el escenario 2 se usa un CMP estándar real (OneTrust en britannica.com).
+- **Didomi en decathlon.fr no se dismissea** (ver D44) — el popup real nunca
+  se adjunta al DOM en una corrida headless, causa sin confirmar. No
+  bloqueante hoy (ni fuga de texto ni contenido perdido, verificado en vivo),
+  pero si algún día un sitio con Didomi SÍ pierde contenido real detrás del
+  popup, este es el primer lugar a mirar.
 - `--export-images` requiere red y puede fallar en hosts que bloquean
   hotlinking.
 - `replay_pagination` solo aplica a GET con params de paginación y cuerpos

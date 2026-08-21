@@ -94,6 +94,22 @@ REJECT_TEXT_PATTERNS = [
     "personalizar", "personalize", "customize", "preferencias", "preferences",
     "ver opciones", "see options", "more options", "mas opciones",
     "close", "cerrar", "later", "mas tarde", "más tarde",
+    # French — verified live on decathlon.fr (Didomi): the reject-equivalent
+    # button read "Continuer sans accepter", matched by none of the above.
+    "continuer sans accepter", "refuser tout", "tout refuser", "refuser",
+    "rejeter", "seulement nécessaire", "uniquement nécessaire",
+    "continuer sans", "gérer les options", "personnaliser",
+    # Italian / Portuguese — same Didomi/OneTrust-style phrasing pattern in
+    # other markets this tool targets (see localizador's market list),
+    # untested live, added on the same reasoning as French.
+    "continua senza accettare", "rifiuta tutto", "rifiuta",
+    "solo necessari", "gestisci opzioni", "personalizza",
+    "continuar sem aceitar", "rejeitar tudo", "rejeitar",
+    "apenas essenciais", "somente necessários", "gerir opções", "personalizar",
+    # German — not one of the explicit target markets, but common enough in
+    # EU consent flows to be worth covering with the same reasoning.
+    "ablehnen", "alle ablehnen", "ohne zu akzeptieren fortfahren",
+    "nur notwendige", "einstellungen verwalten",
 ]
 
 # Accept patterns — used to make sure we NEVER click these.
@@ -101,6 +117,13 @@ ACCEPT_TEXT_PATTERNS = [
     "accept", "accept all", "accept cookies", "i accept", "agree",
     "allow all", "allow", "continue", "aceptar", "aceptar todo",
     "aceptar todas", "de acuerdo", "ok", "entendido", "got it",
+    # Same language set as REJECT_TEXT_PATTERNS above, for symmetry — this
+    # list exists so a reject-text match is never overridden by also looking
+    # like acceptance; it needs every language the reject list has.
+    "tout accepter", "j'accepte", "accepter", "d'accord",
+    "accetta tutto", "accetta", "acconsento", "d'accordo",
+    "aceitar tudo", "aceitar", "concordo", "estou de acordo",
+    "alle akzeptieren", "akzeptieren", "einverstanden", "zustimmen",
 ]
 
 # "Load more"-style list buttons (optional, guarded). Semantic-only expansion
