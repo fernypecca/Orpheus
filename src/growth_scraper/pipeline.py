@@ -404,6 +404,9 @@ class Pipeline:
             record.pageType, record.items = extractors.run_extraction(result)
 
         record.structured = extract_structured(raw_html)
+        record.pageType, record.items = extractors.reconcile_page_type(
+            record.pageType, record.items, record.structured
+        )
         record.summary = _build_summary(url, record.title, record.pageType, record.items, record.text, raw_html, record.structured)
 
         # Fase 3: language triage + rich metadata

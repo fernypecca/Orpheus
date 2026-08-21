@@ -167,6 +167,39 @@ necesita internet. `scripts/` tiene los 5 escenarios + `fixture-check.sh`.
   redirigir), lee en streaming con cap de 64KB (no baja el body entero), y solo
   acepta esquemas http/https (nada de `mailto:`/`file:`/`data:`). El cap de
   `max_frames` se aplica DESPUÉS de filtrar los srcs descartables.
+- **D39 — `pageType` cede ante `structured` cuando la fuente es confiable.**
+  Bug real, verificado en vivo en bodas.net: `classify()` (heurística de
+  `<li>`/`<article>`/`<dt>`/`<address>`) marcaba perfiles de proveedor como
+  `"listing"` con `items` basura (links de nav, pies de foto), porque el nav
+  del header y el carrusel de fotos igual llegan a 4+ `<li>`, y bodas.net no
+  usa `<dt>`/`itemprop`/`<address>` para que la heurística los reconozca como
+  perfil. `structured.py` sí lee el JSON-LD real (`LocalBusiness`) de esa misma
+  página y clasifica bien. `reconcile_page_type()` en `extractors.py`: si
+  `structured.source` es `jsonld`/`microdata` (nunca `meta`/`heuristic`, muy
+  débiles para arbitrar) y su `entityType` no coincide con el `pageType` de la
+  heurística, gana `structured` — y se descartan los `items` viejos en vez de
+  dejarlos mostrando basura junto al tipo ya corregido.
+- **D40 — SSRF guard en `/scrape`.** El server solo escucha en `127.0.0.1`
+  (ver docstring de `server.py`), pero eso no alcanza: `/scrape` acepta
+  cualquier URL http(s) de quien sea que le hable al server, y el día que algo
+  lo exponga (un reverse proxy adelante, por ejemplo — el plan real para
+  producción) ese "quien sea" deja de ser de confianza. `_is_ssrf_target()`
+  resuelve el host y rechaza loopback/RFC1918/link-local/reservado/multicast
+  antes de scrapear — cubre explícitamente el caso de endpoints de metadata de
+  nube (169.254.169.254 y similares). Hueco conocido, no cerrado acá: no
+  protege contra un redirect que lleve a una IP interna *después* de este
+  chequeo — necesitaría engancharse a los eventos de navegación de Playwright,
+  no solo a esta validación previa.
+- **D41 — Workflow: PR a main, con dientes reales.** El intento anterior de
+  esto (rama `chore/pr-workflow`, ya abandonada) instalaba un pre-push hook
+  *local* — protegía un solo clone, cualquier otro (incluido este) quedaba sin
+  nada. Al momento de esa PR el repo todavía era privado y sin CI, así que la
+  nota decía "activar esto cuando sea público" — pero ya es público (ver
+  release pública, commit `aeede34`) y con eso la protección de rama real de
+  GitHub ya está disponible, no es algo "para más adelante". Reemplazado por:
+  `.github/workflows/test.yml` corre el suite completo en cada PR/push a
+  `main`, y un ruleset de GitHub exige ese check en verde antes de mergear —
+  aplica a cualquier clone, no a uno.
 
 ## Estado de los "problemas conocidos" del brief
 

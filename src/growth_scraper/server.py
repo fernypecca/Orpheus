@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import ipaddress
 import os
+import socket
 from contextlib import asynccontextmanager
+from urllib.parse import urlsplit
 
 import uvicorn
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -25,6 +28,40 @@ from .pipeline import Pipeline
 from .robots import RobotsPolicy
 
 DEFAULT_PORT = 8743
+
+
+def _is_ssrf_target(url: str) -> bool:
+    """True if the URL's host resolves to a private/loopback/link-local/reserved
+    address — loopback (127.0.0.1), RFC1918 ranges, and link-local (which is
+    where cloud metadata endpoints like 169.254.169.254 live). /scrape takes a
+    URL from whoever calls this server; without this check, once the server is
+    reachable from anywhere but this exact host (a reverse proxy in front of
+    it counts), that caller can point it at the host's own internal network or
+    its cloud provider's metadata service and read back whatever comes back in
+    `text`.
+
+    Known gap, accepted rather than solved here: this checks the URL's own
+    host, not where a redirect during the actual fetch might lead — a
+    same-origin-looking URL that 302s to an internal address after this check
+    passes would slip through. Closing that needs hooking Playwright's
+    navigation/redirect events, not just this pre-check.
+    """
+    host = urlsplit(url).hostname
+    if not host:
+        return True
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return True
+    for info in infos:
+        raw_ip = info[4][0]
+        try:
+            ip = ipaddress.ip_address(raw_ip)
+        except ValueError:
+            return True
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified:
+            return True
+    return False
 
 
 class ScrapeOptions(BaseModel):
@@ -57,7 +94,15 @@ def check_token(token: str | None, authorization: str | None) -> None:
         raise HTTPException(status_code=401, detail="invalid or missing token")
 
 
-def create_app(base_cfg: ScrapeConfig, max_concurrency: int = 4, token: str | None = None) -> FastAPI:
+def create_app(
+    base_cfg: ScrapeConfig,
+    max_concurrency: int = 4,
+    token: str | None = None,
+    allow_private_targets: bool = False,
+) -> FastAPI:
+    """allow_private_targets exists for tests that scrape their own local
+    fixture server (loopback, by construction trustworthy) — never set it
+    for a real deployment, it turns off the SSRF guard entirely."""
     pipeline: Pipeline | None = None
     sem: asyncio.Semaphore | None = None
 
@@ -89,6 +134,8 @@ def create_app(base_cfg: ScrapeConfig, max_concurrency: int = 4, token: str | No
         url = req.url.strip()
         if not url.startswith(("http://", "https://")):
             raise HTTPException(status_code=400, detail="url must be http(s)")
+        if not allow_private_targets and _is_ssrf_target(url):
+            raise HTTPException(status_code=400, detail="url resolves to a private/internal/reserved address")
         cfg = copy.copy(base_cfg)
         o = req.options
         if o.maxTextChars is not None:

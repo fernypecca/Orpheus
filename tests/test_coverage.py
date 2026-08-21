@@ -210,3 +210,72 @@ def test_scrape_config_fase4_defaults():
     assert c.max_frames == 5
     assert c.anti_bot_retries == 2
     assert c.anti_bot_backoff_s == 15.0
+
+
+# -- pageType/structured reconciliation --------------------------------------
+# Regression case: bodas.net vendor profiles have a busy header nav + photo
+# carousel (>=4 <li>) but no <dt>/itemprop/<address>, so classify() alone
+# always misreads them as "listing" — verified live. structured.py reads the
+# same page's real LocalBusiness JSON-LD correctly; when it does, it must win.
+
+def test_reconcile_prefers_trusted_structured_profile_over_listing_heuristic():
+    from growth_scraper.extractors import reconcile_page_type
+
+    junk_items = [{"title": "Accede", "href": "https://x/login", "snippet": "Accede"}]
+    page_type, items = reconcile_page_type(
+        "listing", junk_items, {"entityType": "profile", "source": "jsonld"}
+    )
+    assert page_type == "profile"
+    assert items == []
+
+
+def test_reconcile_ignores_untrusted_structured_source():
+    from growth_scraper.extractors import reconcile_page_type
+
+    page_type, items = reconcile_page_type(
+        "listing", [{"title": "x"}], {"entityType": "profile", "source": "heuristic"}
+    )
+    assert page_type == "listing"
+    assert items == [{"title": "x"}]
+
+
+def test_reconcile_noop_when_types_agree_or_structured_missing():
+    from growth_scraper.extractors import reconcile_page_type
+
+    assert reconcile_page_type("profile", [], {"entityType": "profile", "source": "jsonld"}) == ("profile", [])
+    assert reconcile_page_type("generic", [], None) == ("generic", [])
+
+
+# -- server SSRF guard --------------------------------------------------------
+
+def test_ssrf_guard_blocks_loopback_and_metadata_and_private_ranges():
+    from growth_scraper.server import _is_ssrf_target
+
+    assert _is_ssrf_target("http://127.0.0.1/") is True
+    assert _is_ssrf_target("http://169.254.169.254/opc/v1/instance/") is True  # cloud metadata
+    assert _is_ssrf_target("http://10.0.0.5/") is True
+    assert _is_ssrf_target("http://192.168.1.1/") is True
+
+
+def test_ssrf_guard_allows_public_ip():
+    from growth_scraper.server import _is_ssrf_target
+
+    assert _is_ssrf_target("http://8.8.8.8/") is False
+
+
+def test_ssrf_guard_blocks_unresolvable_host():
+    from growth_scraper.server import _is_ssrf_target
+
+    assert _is_ssrf_target("http://this-host-should-not-resolve.invalid/") is True
+
+
+def test_server_scrape_rejects_loopback_by_default(fs):
+    from fastapi.testclient import TestClient
+    from conftest import base_cfg
+    from growth_scraper.server import create_app
+
+    # No allow_private_targets here — this is the real, deployed default.
+    app = create_app(base_cfg())
+    with TestClient(app) as client:
+        r = client.post("/scrape", json={"url": fs.url("/")})
+    assert r.status_code == 400

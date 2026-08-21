@@ -13,7 +13,9 @@ def _base_cfg():
 
 @pytest.fixture(scope="session")
 def client():
-    app = create_app(_base_cfg())
+    # allow_private_targets=True: these tests scrape the local fixture server
+    # (loopback), which the SSRF guard would otherwise correctly reject.
+    app = create_app(_base_cfg(), allow_private_targets=True)
     with TestClient(app) as c:
         yield c
 

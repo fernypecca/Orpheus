@@ -132,3 +132,30 @@ def run_extraction(result) -> tuple[str, list[dict]]:
     if ptype == "profile":
         return ptype, [extract_profile(soup, base_url)]
     return ptype, []
+
+
+# Sources structured.py trusts enough to override the DOM-heuristic classify()
+# above. "meta"/"heuristic" are guesses too weak to arbitrate a disagreement.
+_TRUSTED_STRUCTURED_SOURCES = ("jsonld", "microdata")
+
+
+def reconcile_page_type(page_type: str, items: list[dict], structured: dict | None) -> tuple[str, list[dict]]:
+    """classify() only sees DOM shape (li/article/card counts, dt/address tags),
+    so a profile page with a busy header nav or photo carousel can still read
+    as "listing" — verified live on bodas.net, whose vendor profiles have no
+    <dt>/itemprop/<address> for classify() to catch, but do publish real
+    LocalBusiness JSON-LD. When structured.py found that same page via a
+    trusted source and disagrees, its answer wins: real schema.org markup
+    beats a tag-counting guess. Stale "listing" items (nav links, photo
+    captions) are dropped rather than shown alongside the corrected type.
+    """
+    if not structured or structured.get("source") not in _TRUSTED_STRUCTURED_SOURCES:
+        return page_type, items
+    structured_type = structured.get("entityType")
+    if not structured_type or structured_type == page_type:
+        return page_type, items
+    if structured_type == "profile":
+        return "profile", []
+    if structured_type == "listing":
+        return "listing", items
+    return page_type, items
