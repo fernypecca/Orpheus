@@ -96,7 +96,7 @@ def check_token(token: str | None, authorization: str | None) -> None:
 
 def create_app(
     base_cfg: ScrapeConfig,
-    max_concurrency: int = 4,
+    max_concurrency: int = 6,
     token: str | None = None,
     allow_private_targets: bool = False,
 ) -> FastAPI:
@@ -179,7 +179,7 @@ def serve_main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="gscrape serve")
     p.add_argument("--port", type=int, default=int(os.environ.get("GSCRAPE_PORT", DEFAULT_PORT)))
     p.add_argument("--cache-dir")
-    p.add_argument("--max-concurrency", type=int, default=4)
+    p.add_argument("--max-concurrency", type=int, default=6)
     p.add_argument("--token")
     p.add_argument("--no-consent", action="store_true")
     p.add_argument("--no-expand", action="store_true")
