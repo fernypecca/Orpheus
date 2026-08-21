@@ -212,6 +212,20 @@ necesita internet. `scripts/` tiene los 5 escenarios + `fixture-check.sh`.
   logueado como warning `[CAPTURE]`. Salía en cada corrida contra bodas.net
   (su endpoint de tracking). Verificado en vivo: `pageType`/`structured`/
   `apiResponses` sin cambios tras apagarlo (netrec.py sigue capturando igual).
+- **D43 — `max_concurrency` del server: 4 → 6, con benchmark real.** 10 perfiles
+  reales de bodas.net (mismo dominio — el escenario de riesgo real para
+  anti-bot), vía `gscrape serve` local: concurrencia 2 → 31.1s, 6 → 13.6s,
+  10 → 10.0s. **Cero errores/`protectionBlocked` en ningún nivel**, ni al
+  paralelizar al máximo contra el mismo sitio — la preocupación de que más
+  concurrencia dispare más detección anti-bot no se vio en esta prueba. Se
+  achican los retornos pasado 6 (+4 concurrencia de 2→6 ahorra 17.5s; de 6→10
+  solo 3.6s), así que ahí quedó el default nuevo. **Límites de esta prueba,
+  a tener en cuenta**: 10 URLs de un solo dominio, una sola corrida, en la
+  Mac de Fer (más núcleos que el VPS de 2 OCPU donde esto va a correr en
+  producción — Chromium renderiza con CPU real, vale la pena remedir una vez
+  que el VPS esté arriba). `--concurrency` de `--crawl` (BFS, código
+  separado del server) **no se tocó** — mismo riesgo en teoría, pero sin
+  evidencia propia todavía, no se cambió a ciegas.
 
 ## Estado de los "problemas conocidos" del brief
 
