@@ -23,6 +23,7 @@ _CMP_REJECT_SELECTORS = [
     "#CybotCookiebotDialogBodyLevelButtonLevelOptinDecline",
     "#didomi-notice-disagree-button",
     '[data-testid="didomi-notice-disagree-button"]',
+    "#hs-eu-decline-button",  # HubSpot EU banner (verified live, hubspot.com)
     ".sp_choice_type_11",
     "#truste-reject-btn",
     '.truste-reject-btn',
@@ -148,6 +149,7 @@ _STRONG_CONTAINER_SELECTORS = [
     '[class*="truste"]', '[id*="truste"]',
     '[class*="usercentrics"]', '[id*="usercentrics"]',
     '[class*="klaro"]', '[class*="osano"]', '[class*="complianz"]',
+    '[id*="hs-eu-cookie"]', '[id*="hs-cookie"]',  # HubSpot (verified live)
 ]
 
 # `cookie` alone can match legitimate content (e.g. recipe pages), so it is
@@ -209,7 +211,7 @@ _CONSENT_STILL_JS = """
 """ % {"strong": ",".join(_STRONG_CONTAINER_SELECTORS), "weak": ",".join(_WEAK_CONTAINER_SELECTORS)}
 
 
-async def handle_consent(page, iterations: int = 3) -> str:
+async def handle_consent(page, iterations: int = 3, late_wait: bool = True) -> str:
     """Run the reject-only handler a few times (banners can load late).
 
     If a reject action succeeds we stop touching the page — manipulating the DOM
@@ -249,11 +251,13 @@ async def handle_consent(page, iterations: int = 3) -> str:
         # leaked into `text` either way, and real content/structured data
         # still came through (verified live — see D44). Kept as a real,
         # modest improvement for CMPs that genuinely just load a bit late.
-        if last == "no-consent-found" and i == 0:
+        if last == "no-consent-found" and i == 0 and late_wait:
             try:
                 await page.wait_for_selector(container_query(), state="attached", timeout=800)
             except Exception:
                 pass  # no CMP on this page, or it never showed up
+            continue
+        if last == "no-consent-found":
             continue
         # If we clicked reject, let the site's own JS dismiss the banner; then
         # check it actually went away. Manipulating the DOM after a working

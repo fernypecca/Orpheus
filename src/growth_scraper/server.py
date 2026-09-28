@@ -79,6 +79,17 @@ class ScrapeOptions(BaseModel):
     consentWaitMs: int | None = None
     antiBotRetries: int | None = None
     antiBotBackoff: float | None = None
+    # Context.dev-inspired, local-only (opt-in):
+    parseRules: dict[str, str] | None = None
+    query: str | None = None
+    maxHighlights: int | None = None
+    excludeSelectors: list[str] | None = None
+    includeLinks: bool | None = None
+    waitFor: str | None = None
+    extraHeaders: dict[str, str] | None = None
+    acceptLanguage: str | None = None
+    mainContent: bool | None = None
+    maxAgeMs: int | None = None
 
 
 class ScrapeRequest(BaseModel):
@@ -160,6 +171,26 @@ def create_app(
             cfg.anti_bot_retries = max(0, o.antiBotRetries)
         if o.antiBotBackoff is not None:
             cfg.anti_bot_backoff_s = max(0.0, o.antiBotBackoff)
+        if o.parseRules is not None:
+            cfg.parse_rules = dict(o.parseRules)
+        if o.query is not None:
+            cfg.query = o.query
+        if o.maxHighlights is not None:
+            cfg.max_highlights = max(0, o.maxHighlights)
+        if o.excludeSelectors is not None:
+            cfg.exclude_selectors = list(o.excludeSelectors)
+        if o.includeLinks is not None:
+            cfg.include_links = bool(o.includeLinks)
+        if o.waitFor is not None:
+            cfg.wait_for = o.waitFor
+        if o.extraHeaders is not None:
+            cfg.extra_headers = dict(o.extraHeaders)
+        if o.acceptLanguage is not None:
+            cfg.accept_language = o.acceptLanguage
+        if o.mainContent is not None:
+            cfg.main_content = bool(o.mainContent)
+        if o.maxAgeMs is not None:
+            cfg.max_age_s = max(0.0, o.maxAgeMs / 1000)
         if pipeline is None or sem is None:
             raise HTTPException(status_code=500, detail="server not initialized")
         try:

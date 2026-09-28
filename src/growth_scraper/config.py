@@ -6,6 +6,7 @@ behavior without reading the rest of the codebase (CLAUDE.md convention).
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -39,7 +40,10 @@ DEFAULT_RETRY_BACKOFF = 1.5      # base seconds; grows exponentially per attempt
 SITEMAP_MAX_URLS = 2_000         # cap on URLs fetched from a sitemap
 MAX_PAGINATION_PAGES = 5         # P1 API replay cap
 MAX_LISTING_ITEMS = 50           # items extracted from a listing page
-ROBOTS_UA_TOKEN = "GrowthScraperBot/0.1 (+research; respects robots.txt)"
+# GSCRAPE_USER_AGENT lets callers identify themselves (e.g. with a contact address).
+ROBOTS_UA_TOKEN = os.environ.get(
+    "GSCRAPE_USER_AGENT", "GrowthScraperBot/0.1 (+research; respects robots.txt)"
+)
 ROBOTS_CACHE_TTL_SECONDS = 86_400  # 1 day
 
 # ---------------------------------------------------------------------------
@@ -136,6 +140,28 @@ LOAD_MORE_TEXT_PATTERNS = [
 ]
 
 # ---------------------------------------------------------------------------
+# Navigation containers: landmarks + nav-ish class/id tokens.
+# Used to keep site chrome (mega-menus, mobile menus, header/footer link
+# columns) out of `items` and `links`. Verified live: Stripe's mega-menu and
+# Slack's ext-nav live in <div> trees OUTSIDE any semantic <nav>, so tag-only
+# exclusion (excluded_tags) cannot catch them.
+# Caveat (same class as D3): a content block whose class literally contains
+# "menu" (e.g. a restaurant menu page) is also filtered — accepted, documented.
+# This NEVER touches `text`, only the derived items/links fields.
+# ---------------------------------------------------------------------------
+NAV_CONTAINER_SELECTORS = [
+    "nav",
+    "[role='navigation']",
+    "[role='menubar']",
+    "header",
+    "footer",
+    "[class*='nav' i]",
+    "[id*='nav' i]",
+    "[class*='menu' i]",
+    "[id*='menu' i]",
+]
+
+# ---------------------------------------------------------------------------
 # Anti-bot / protection indicators (fail-closed detection)
 # ---------------------------------------------------------------------------
 PROTECTED_TITLE_FRAGMENTS = [
@@ -216,6 +242,17 @@ class ScrapeConfig:
     page_timeout_ms: int = DEFAULT_PAGE_TIMEOUT_MS
     headful: bool = False
     verbose: bool = False
+    # -- Context.dev-inspired, local-only options (all opt-in, polite) --------
+    parse_rules: dict = field(default_factory=dict)  # {"title": "h1"} / list with "[]"
+    query: Optional[str] = None  # highlights query; None = no highlights
+    max_highlights: int = 3
+    exclude_selectors: list = field(default_factory=list)  # CSS removed before text/parse
+    include_links: bool = True  # False strips markdown link URLs, keeps anchor text
+    wait_for: Optional[str] = None  # "1200" ms or "500ms" or CSS selector
+    extra_headers: dict = field(default_factory=dict)  # added to browser + httpx fetches
+    accept_language: Optional[str] = None
+    main_content: bool = False  # readability-lite: keep the main column only
+    max_age_s: float = 0.0  # record cache TTL in seconds (0 = forever, current behavior)
 
     def polite_delay(self, crawl_delay: Optional[float] = None) -> float:
         """Effective delay per request: config floor, robots crawl-delay wins if higher."""
@@ -255,6 +292,12 @@ class Record:
     frameTexts: Optional[list] = None
     retries: int = 0
     fromCache: bool = False
+    parsed: Optional[dict] = None
+    highlights: Optional[list] = None
+    links: Optional[list] = None
+    imagesInfo: Optional[list] = None
+    document: Optional[dict] = None
+    degraded: bool = False  # soft-blocked render (e.g. "browser not supported" fallback served with HTTP 200)
 
     def to_dict(self) -> dict:
         d = {
@@ -278,6 +321,12 @@ class Record:
             "frames": self.frames,
             "frameTexts": self.frameTexts,
             "retries": self.retries,
+            "parsed": self.parsed,
+            "highlights": self.highlights,
+            "links": self.links,
+            "imagesInfo": self.imagesInfo,
+            "document": self.document,
+            "degraded": self.degraded,
         }
         # Opt-in (--raw-html): unprocessed HTML, for consumers that need what
         # Crawl4AI's cleaning strips (e.g. inline JSON <script> blocks).

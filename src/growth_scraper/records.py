@@ -46,6 +46,7 @@ class CsvWriter:
         "wordCount", "itemCount", "statusCode", "retries", "error", "text_preview",
         "structuredSource", "structuredPrice", "structuredRatingValue",
         "structuredReviewCount", "structuredCategory", "language", "finalUrl",
+        "parsedKeys", "highlightsCount", "linksCount", "docFormat", "degraded",
     ]
 
     def __init__(self, path: str):
@@ -77,6 +78,11 @@ class CsvWriter:
             s.get("structuredCategory", ""),
             s.get("language", ""),
             record.finalUrl or "",
+            ";".join(s.get("parsedKeys", []) or (list((record.parsed or {}).keys()) if record.parsed else [])),
+            s.get("highlightsCount", "") if s.get("highlightsCount", "") != "" else (len(record.highlights or []) if record.highlights else ""),
+            s.get("linksCount", "") if s.get("linksCount", "") != "" else (len(record.links or []) if record.links else ""),
+            s.get("docFormat", "") or ((record.document or {}).get("format", "") if record.document else ""),
+            "yes" if (s.get("degraded") or record.degraded) else "",
         ])
         self._fh.flush()
 

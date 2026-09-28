@@ -19,10 +19,36 @@ from .config import (
 )
 from .crawl import crawl_seeds
 from .pacing import Pacer
+from .parse import parse_rules_from_cli
 from .pipeline import Pipeline
 from .records import CsvWriter, JsonlWriter, emit_progress
 from .robots import RobotsPolicy
 from .urlutil import normalize_url
+
+
+def _parse_headers(values: list[str]) -> dict:
+    headers: dict[str, str] = {}
+    for item in values or []:
+        if ":" not in item:
+            continue
+        k, v = item.split(":", 1)
+        k, v = k.strip(), v.strip()
+        if k and v:
+            headers[k] = v
+    return headers
+
+
+def _parse_selectors(values: list[str]) -> list[str]:
+    out: list[str] = []
+    for item in values or []:
+        out.extend(s.strip() for s in item.split(",") if s.strip())
+    return out
+
+
+def _parse_max_age_cli(spec: str | None) -> float:
+    from .pipeline import _parse_max_age
+
+    return _parse_max_age(spec)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -60,6 +86,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--anti-bot-backoff", type=float, default=15.0, help="Base seconds between 403/429 retries.")
     p.add_argument("--export-images", metavar="DIR", help="Save page images into DIR (P2 multimodal pointer).")
     p.add_argument("--screenshots", metavar="DIR", help="Save a full-page PNG per URL into DIR.")
+    p.add_argument("--parse", action="append", default=[], metavar="NAME=SELECTOR",
+                   help="Extract a field with a CSS selector (repeatable). Suffix [] for lists, e.g. --parse 'title=h1' --parse 'prices=.price[]'.")
+    p.add_argument("--query", help="Return query-focused passages in `highlights` (local scoring, no LLM).")
+    p.add_argument("--max-highlights", type=int, default=3, help="Max passages in `highlights` (default 3).")
+    p.add_argument("--exclude-selectors", action="append", default=[], metavar="SELECTOR",
+                   help="CSS selectors to remove before text/parse (repeatable or comma-separated), e.g. --exclude-selectors 'nav,.ads'.")
+    p.add_argument("--no-links", action="store_true", help="Strip link URLs from text, keep anchor text.")
+    p.add_argument("--wait-for", metavar="SPEC", help="Wait after load: milliseconds ('1200'/'2s') or a CSS selector.")
+    p.add_argument("--header", action="append", default=[], metavar="K:V",
+                   help="Extra request header (repeatable) for browser + polite fetches, e.g. --header 'Accept-Language: es-ES'.")
+    p.add_argument("--accept-language", help="Accept-Language for browser + polite fetches.")
+    p.add_argument("--main-content", action="store_true",
+                   help="Keep the main column only (readability-lite): drops sidebars/comments/related.")
+    p.add_argument("--max-age", metavar="SPEC",
+                   help="Record cache TTL, e.g. '24h', '7d', '30m' (default: forever).")
     p.add_argument("--max-api-responses", type=int, default=DEFAULT_MAX_API_RESPONSES)
     p.add_argument("--page-timeout", type=int, default=30_000, help="Page load timeout in ms.")
     p.add_argument("--headful", action="store_true", help="Show the browser window.")
@@ -126,6 +167,16 @@ def main(argv: list[str] | None = None) -> int:
         page_timeout_ms=args.page_timeout,
         headful=args.headful,
         verbose=args.verbose,
+        parse_rules=parse_rules_from_cli(args.parse),
+        query=args.query,
+        max_highlights=max(0, args.max_highlights),
+        exclude_selectors=_parse_selectors(args.exclude_selectors),
+        include_links=not args.no_links,
+        wait_for=args.wait_for,
+        extra_headers=_parse_headers(args.header),
+        accept_language=args.accept_language,
+        main_content=args.main_content,
+        max_age_s=_parse_max_age_cli(args.max_age),
     )
 
     robots = RobotsPolicy(cache_dir=args.cache_dir)
