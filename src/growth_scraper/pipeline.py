@@ -23,6 +23,7 @@ from .clickguard import GUARD_JS
 from .parse import parse_fields
 from .highlights import highlights_for_query
 from .documents import detect_doc_format, extract_document, MAX_DOC_BYTES
+from .ads import detect_library, extract_ads
 from .maincontent import extract_main_text
 from .pagemeta import extract_links, extract_images_info
 from .utils import build_headers, browser_headers
@@ -348,7 +349,8 @@ def _build_summary(url: str, title: str, page_type: str, items: list, text: str,
                    structured: dict | None = None, parsed: dict | None = None,
                    highlights: list | None = None, query: str | None = None,
                    links: list | None = None, images_info: list | None = None,
-                   document: dict | None = None, degraded: bool = False) -> dict:
+                   document: dict | None = None, degraded: bool = False,
+                   ads: list | None = None, ads_library: str | None = None) -> dict:
     """Cheap structured triage fields so growth marketers can filter before the LLM."""
     host = (urlparse(url).hostname or "").lower().removeprefix("www.")
     meta, h1 = "", ""
@@ -396,6 +398,10 @@ def _build_summary(url: str, title: str, page_type: str, items: list, text: str,
         result["docFormat"] = document.get("format")
     if degraded:
         result["degraded"] = True
+    if ads_library:
+        result["adsLibrary"] = ads_library
+    if ads:
+        result["adsCount"] = len(ads)
     return result
 
 
@@ -704,6 +710,7 @@ class Pipeline:
         record.links = extract_links(filtered_html or raw_html, record.finalUrl or url) or None
         record.imagesInfo = extract_images_info(filtered_html or raw_html, record.finalUrl or url) or None
         record.degraded = _is_degraded_text(record.text)
+        record.ads = extract_ads(filtered_html or raw_html, record.finalUrl or url) or None
 
         # P1: page-type extractors
         if result.cleaned_html or result.html:
@@ -716,7 +723,8 @@ class Pipeline:
         record.summary = _build_summary(url, record.title, record.pageType, record.items, record.text, raw_html, record.structured,
                                         parsed=record.parsed, highlights=record.highlights, query=cfg.query,
                                         links=record.links, images_info=record.imagesInfo,
-                                        degraded=record.degraded)
+                                        degraded=record.degraded, ads=record.ads,
+                                        ads_library=detect_library(record.finalUrl or url))
 
         # Fase 3: language triage + rich metadata
         lang = detect_language(raw_html, record.text)

@@ -298,6 +298,7 @@ class Record:
     imagesInfo: Optional[list] = None
     document: Optional[dict] = None
     degraded: bool = False  # soft-blocked render (e.g. "browser not supported" fallback served with HTTP 200)
+    ads: Optional[list] = None  # normalized ad-library cards (see ads.py)
 
     def to_dict(self) -> dict:
         d = {
@@ -327,6 +328,7 @@ class Record:
             "imagesInfo": self.imagesInfo,
             "document": self.document,
             "degraded": self.degraded,
+            "ads": self.ads,
         }
         # Opt-in (--raw-html): unprocessed HTML, for consumers that need what
         # Crawl4AI's cleaning strips (e.g. inline JSON <script> blocks).

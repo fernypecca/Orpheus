@@ -45,7 +45,40 @@ de pago, corre en local.
 | `items dedupe` | `extract_items` colapsa duplicados exactos (title, href); variantes con distinto href se conservan (matrices de planes SaaS repiten filas por tier). |
 | `items quality` | Se saltan controles UI sin destino de 1 palabra ("Expand") y estados transitorios de widgets ("Generating...", "loading" en bloques <120 chars). Verificado live: Twilio AI finder, Slack. |
 | `data-uri strip` | `_strip_data_images`: las imágenes inline `data:` (iconos SVG de Asana) se reducen a su alt en `text`. Siempre activo. |
+| `ads.py` | Bibliotecas de anuncios: `detect_library` por URL + `extract_ads` → tarjetas normalizadas en campo `ads` (+ `adsLibrary`/`adsCount` en summary/CSV). Google verificado live (`creative-preview`); FB/LinkedIn stubs documentados. |
 | `degraded flag` | `record.degraded` + `summary.degraded` + columna CSV cuando el body trae marcadores de fallback ("browser not supported"... solo primeros 3000 chars). Airtable sirve su fallback con HTTP 200 a headless (verificado live). |
+
+## Recetas: bibliotecas de anuncios
+
+- **Google Ads Transparency** (público, sin login, sin robots.txt → permitido):
+  `https://adstransparency.google.com/advertiser/<AR...>?region=US` (cambiar
+  `region=` por país). Detalle de creatividad:
+  `.../advertiser/<AR>/creative/<CR>?region=US`. Cada tarjeta sale en `ads`
+  (advertiser, creative_url, image_url, format, position/total). Para ver los
+  creativos: `--screenshots DIR` (full-page = tablero visual) + `imagesInfo`.
+  Scroll infinito ya cubierto por expansión (`show more`/`ver más`).
+- **Facebook Ad Library**: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=ES&query=<marca>`.
+  robots.txt `Disallow: /` para * → Orpheus la rechaza por defecto; con
+  `--ignore-robots` (decisión y ToS del usuario) el headless recibe HTTP 403
+  igualmente (verificado live sep-2026). Sin bypass, sin excepción.
+- **LinkedIn ad library** (`linkedin.com/ad-library*`): login wall en la
+  práctica + robots `Disallow: /`. Misma política que Facebook.
+
+## Recetas: Meta Ads (API oficial, sin scraping)
+
+Meta prohíbe el scraping (`Disallow: /` + 403 a headless, verificado live).
+La vía legítima es su API (`graph.facebook.com/ads_archive`, v26):
+cobertura total en UE/UK (DSA) + políticos/issues global; comerciales fuera
+de UE/UK NO disponibles por API.
+
+1. Token (lo hace el humano una vez): developers.facebook.com → crear app →
+   verificar identidad → acceso a Ad Library API (app review) → token.
+   `export META_ADS_TOKEN=...` (jamás commitear, jamás loguear).
+2. `uv run gscrape meta-ads --query "zapatillas" --countries ES --limit 50 -o out.jsonl --csv`
+   Por anunciante: `--page-ids 123,456`. Solo políticos: `--ad-type POLITICAL_AND_ISSUE_ADS`.
+3. Salida = mismo record JSONL (`pageType: ads`, tarjetas `ads` con
+   advertiser/text/creative_url/fechas/plataformas). Rate-limit 613 →
+   backoff + error honesto.
 | `cache TTL` | `--max-age 24h/7d/30m` (server: `maxAgeMs`): el cache de records caduca; default 0 = eterno (comportamiento anterior). |
 
 `tests/` corre contra un **fixture server local** (`fixtureserver.py`), no
