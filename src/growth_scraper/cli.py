@@ -132,6 +132,10 @@ def main(argv: list[str] | None = None) -> int:
         from .server import serve_main
 
         return serve_main(argv[1:])
+    if argv and argv[0] == "meta-ads":
+        from .meta_ads_cli import meta_ads_main
+
+        return meta_ads_main(argv[1:])
     args = build_parser().parse_args(argv)
     urls = _collect_urls(args)
     if not urls and args.sitemap is None:

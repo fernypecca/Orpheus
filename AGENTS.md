@@ -63,6 +63,22 @@ de pago, corre en local.
   igualmente (verificado live sep-2026). Sin bypass, sin excepción.
 - **LinkedIn ad library** (`linkedin.com/ad-library*`): login wall en la
   práctica + robots `Disallow: /`. Misma política que Facebook.
+
+## Recetas: Meta Ads (API oficial, sin scraping)
+
+Meta prohíbe el scraping (`Disallow: /` + 403 a headless, verificado live).
+La vía legítima es su API (`graph.facebook.com/ads_archive`, v26):
+cobertura total en UE/UK (DSA) + políticos/issues global; comerciales fuera
+de UE/UK NO disponibles por API.
+
+1. Token (lo hace el humano una vez): developers.facebook.com → crear app →
+   verificar identidad → acceso a Ad Library API (app review) → token.
+   `export META_ADS_TOKEN=...` (jamás commitear, jamás loguear).
+2. `uv run gscrape meta-ads --query "zapatillas" --countries ES --limit 50 -o out.jsonl --csv`
+   Por anunciante: `--page-ids 123,456`. Solo políticos: `--ad-type POLITICAL_AND_ISSUE_ADS`.
+3. Salida = mismo record JSONL (`pageType: ads`, tarjetas `ads` con
+   advertiser/text/creative_url/fechas/plataformas). Rate-limit 613 →
+   backoff + error honesto.
 | `cache TTL` | `--max-age 24h/7d/30m` (server: `maxAgeMs`): el cache de records caduca; default 0 = eterno (comportamiento anterior). |
 
 `tests/` corre contra un **fixture server local** (`fixtureserver.py`), no
