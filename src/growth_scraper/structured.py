@@ -36,7 +36,11 @@ from .config import (
     STRUCTURED_REVIEW_COUNT_SELECTORS,
 )
 
-_ENTITY_TYPES = ("Product", "LocalBusiness", "ProfessionalService", "Service", "Organization", "Place")
+_ENTITY_TYPES = ("LocalBusiness", "ProfessionalService", "Service", "Organization", "Place")
+# Product + SoftwareApplication share the commerce shape (offers/price/brand).
+# SaaS pages publish SoftwareApplication almost as often as Product
+# (verified live: atlassian.com ships an @graph with both).
+_PRODUCT_TYPES = ("Product", "SoftwareApplication")
 _LISTING_TYPES = ("ItemList", "CollectionPage", "OfferCatalog")
 
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
@@ -111,6 +115,8 @@ def _entity_kind(entity: dict) -> str | None:
         return None
     names = [types] if isinstance(types, str) else [t for t in types if isinstance(t, str)]
     for t in names:
+        if t in _PRODUCT_TYPES:
+            return "product"
         if t in _ENTITY_TYPES:
             return "profile"
         if t in _LISTING_TYPES:
@@ -119,6 +125,9 @@ def _entity_kind(entity: dict) -> str | None:
 
 
 def _pick_entity(entities: list[dict]) -> dict | None:
+    product = next((e for e in entities if _entity_kind(e) == "product"), None)
+    if product is not None:
+        return product
     profile = next((e for e in entities if _entity_kind(e) == "profile"), None)
     if profile is not None:
         return profile
@@ -183,6 +192,62 @@ def _ld_reviews(review) -> list[dict]:
     return out
 
 
+_AVAILABILITY_MAP = {
+    "instock": "in_stock",
+    "outofstock": "out_of_stock",
+    "preorder": "preorder",
+    "preorderavailable": "preorder",
+    "backorder": "backorder",
+    "discontinued": "discontinued",
+}
+
+
+def _availability(value) -> str | None:
+    if not value:
+        return None
+    token = str(value).rsplit("/", 1)[-1].strip().lower().replace("_", "").replace("-", "")
+    return _AVAILABILITY_MAP.get(token)
+
+
+def _brand_name(value) -> str | None:
+    if isinstance(value, str):
+        return _clean(value) or None
+    if isinstance(value, dict):
+        return _clean(value.get("name")) or None
+    return None
+
+
+def _offer_summary(offer: dict) -> dict:
+    return {
+        "price": _clean(offer.get("price")) or None,
+        "currency": _clean(offer.get("priceCurrency")) or None,
+        "availability": _availability(offer.get("availability")),
+        "sku": _clean(offer.get("sku")) or None,
+        "url": _clean(offer.get("url")) or None,
+    }
+
+
+def _product_extras(entity: dict) -> dict:
+    """brand / sku / availability / variants for @type Product."""
+    extras: dict = {
+        "brand": _brand_name(entity.get("brand")),
+        "sku": _clean(entity.get("sku")) or None,
+        "mpn": _clean(entity.get("mpn")) or None,
+        "gtin": _clean(entity.get("gtin13") or entity.get("gtin")) or None,
+        "availability": None,
+        "variants": [],
+    }
+    offers = entity.get("offers")
+    items = offers if isinstance(offers, list) else [offers]
+    items = [o for o in items if isinstance(o, dict)]
+    if items:
+        first = _offer_summary(items[0])
+        extras["availability"] = first["availability"]
+        if len(items) > 1:
+            extras["variants"] = [_offer_summary(o) for o in items[:20]]
+    return extras
+
+
 def _ld_contact(entity: dict) -> dict | None:
     contact = None
     cp = entity.get("contactPoint")
@@ -240,11 +305,14 @@ def _from_jsonld(soup: BeautifulSoup) -> dict | None:
         return None
     kind = _entity_kind(entity)
     out = dict(_EMPTY)
-    out["entityType"] = "listing" if kind == "listing" else "profile"
+    out["entityType"] = "listing" if kind == "listing" else kind
     out["name"] = _clean(entity.get("name")) or None
     out["description"] = _clean(entity.get("description")) or None
     out["image"] = _ld_image(entity.get("image")) or None
-    price = _ld_price(entity.get("offers"))
+    offers = entity.get("offers")
+    if isinstance(offers, list):
+        offers = next((o for o in offers if isinstance(o, dict)), None)
+    price = _ld_price(offers)
     if price is None and entity.get("priceRange"):
         price = {"value": _clean(entity["priceRange"]), "currency": None, "isRange": True}
     out["price"] = price
@@ -252,6 +320,10 @@ def _from_jsonld(soup: BeautifulSoup) -> dict | None:
     out["reviews"] = _ld_reviews(entity.get("review"))
     out["category"] = _ld_category(entities, entity) or None
     out["contact"] = _ld_contact(entity)
+    if kind == "product":
+        out.update(_product_extras(entity))
+        if out["price"] is None and entity.get("offers") is None:
+            out["price"] = None
     if kind == "listing":
         items = entity.get("itemListElement")
         if isinstance(items, list):
@@ -269,8 +341,9 @@ def _from_microdata(soup: BeautifulSoup) -> dict | None:
         return None
     itemtype = scope.get("itemtype", "").lower()
     is_listing = any(t in itemtype for t in ("itemlist", "collectionpage", "offercatalog"))
-    is_entity = is_listing or any(
-        t in itemtype for t in ("product", "localbusiness", "professionalservice", "service", "organization", "place")
+    is_product = "product" in itemtype or "softwareapplication" in itemtype
+    is_entity = is_listing or is_product or any(
+        t in itemtype for t in ("localbusiness", "professionalservice", "service", "organization", "place")
     )
     if not is_entity:
         return None
@@ -282,6 +355,8 @@ def _from_microdata(soup: BeautifulSoup) -> dict | None:
         val = el.get("content")
         if val is None and el.get("datetime"):
             val = el.get("datetime")
+        if val is None and el.name in ("a", "link") and el.get("href"):
+            val = el.get("href")  # availability/url live in href, not text
         if val is None:
             val = el.get_text(" ", strip=True)
         for n in names:
@@ -290,7 +365,7 @@ def _from_microdata(soup: BeautifulSoup) -> dict | None:
     if not props:
         return None
     out = dict(_EMPTY)
-    out["entityType"] = "listing" if is_listing else "profile"
+    out["entityType"] = "listing" if is_listing else ("product" if is_product else "profile")
     out["source"] = "microdata"
     out["name"] = props.get("name") or None
     out["description"] = props.get("description") or None
@@ -316,6 +391,10 @@ def _from_microdata(soup: BeautifulSoup) -> dict | None:
             "address": {_ADDR_MAP[k]: props.get(k) or None for k in addr_keys} if has_addr else None,
         }
     out["category"] = props.get("category") or None
+    if is_product:
+        out["brand"] = _clean(props.get("brand")) or None
+        out["sku"] = _clean(props.get("sku")) or None
+        out["availability"] = _availability(props.get("availability"))
     if props.get("numberOfItems"):
         out["itemCount"] = _as_int(props.get("numberOfItems"))
     return out

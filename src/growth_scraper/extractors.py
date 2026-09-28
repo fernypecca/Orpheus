@@ -14,7 +14,7 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
-from .config import MAX_LISTING_ITEMS
+from .config import MAX_LISTING_ITEMS, NAV_CONTAINER_SELECTORS
 
 _LISTING_SELECTORS = [
     ("article", "article"),
@@ -25,6 +25,14 @@ _LISTING_SELECTORS = [
 
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 _PHONE_RE = re.compile(r"(?:\+?\d{1,3}[ -]?)?(?:\(\d{2,4}\)|\d{2,4})[ -]?\d{3,4}[ -]?\d{3,4}")
+
+# Transient widget states are never content (Twilio's AI finder renders
+# "Generating your product picks..." into the DOM, verified live sep-2026).
+# Only matched in short blocks — "loading speed" in a real paragraph survives.
+_LOADING_PATTERNS = [
+    "loading", "please wait", "generating your", "one moment please",
+    "just a moment", "fetching results",
+]
 
 
 def classify(soup: BeautifulSoup) -> str:
@@ -64,6 +72,7 @@ def _clean(text: str | None) -> str:
 def extract_items(soup: BeautifulSoup, base_url: str) -> list[dict]:
     selector = _pick_selector(soup)
     items: list[dict] = []
+    seen: set[tuple[str, str]] = set()
     for block in soup.select(selector)[:MAX_LISTING_ITEMS]:
         if block.find("script") or block.find("style"):
             continue
@@ -79,6 +88,18 @@ def extract_items(soup: BeautifulSoup, base_url: str) -> list[dict]:
             title = snippet[:120]
         if not title and not href:
             continue
+        # UI controls without destination ("Expand", "More") are chrome, and
+        # transient widget states ("Generating your picks...") are not content.
+        if not href and len(title.split()) <= 1:
+            continue
+        if len(snippet) < 120 and any(p in snippet.lower() for p in _LOADING_PATTERNS):
+            continue
+        # SaaS plan matrices repeat the same feature row per tier (seen live
+        # on slack.com/pricing: "Basic AI" x2, "AI search" x2...). Drop exact
+        # duplicates, keep first occurrence and distinct-href variants.
+        if (title, href) in seen:
+            continue
+        seen.add((title, href))
         items.append({"title": title, "href": href, "snippet": snippet})
     return items
 
@@ -116,6 +137,24 @@ def extract_profile(soup: BeautifulSoup, base_url: str) -> dict:
     return out
 
 
+def _strip_nav_containers(soup: BeautifulSoup) -> BeautifulSoup:
+    """Remove site-chrome subtrees (mega-menus, mobile menus, header/footer).
+
+    Works on a throwaway copy: callers pass the already-parsed soup and get a
+    filtered one back. Never raises; on any error returns the input unchanged.
+    """
+    try:
+        for selector in NAV_CONTAINER_SELECTORS:
+            try:
+                for el in soup.select(selector):
+                    el.decompose()
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return soup
+
+
 def run_extraction(result) -> tuple[str, list[dict]]:
     """Returns (page_type, items_or_profile). Generic pages yield []."""
     html = result.cleaned_html or result.html or ""
@@ -126,9 +165,17 @@ def run_extraction(result) -> tuple[str, list[dict]]:
     except Exception:
         return "generic", []
     base_url = getattr(result, "url", "") or ""
-    ptype = classify(soup)
+    # Classify + extract listings on chrome-free soup (nav menus must not
+    # pose as content cards); profiles read the full soup so a <header>
+    # h1 is never lost to the nav filter. decompose() mutates in place,
+    # hence two parses instead of one parse + copy.
+    try:
+        content_soup = _strip_nav_containers(BeautifulSoup(html, "html.parser"))
+    except Exception:
+        content_soup = soup
+    ptype = classify(content_soup)
     if ptype == "listing":
-        return ptype, extract_items(soup, base_url)
+        return ptype, extract_items(content_soup, base_url)
     if ptype == "profile":
         return ptype, [extract_profile(soup, base_url)]
     return ptype, []
@@ -156,6 +203,8 @@ def reconcile_page_type(page_type: str, items: list[dict], structured: dict | No
         return page_type, items
     if structured_type == "profile":
         return "profile", []
+    if structured_type == "product":
+        return "product", []
     if structured_type == "listing":
         return "listing", items
     return page_type, items

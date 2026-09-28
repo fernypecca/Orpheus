@@ -29,11 +29,24 @@ de pago, corre en local.
 | `sitemap.py` | Seed desde sitemap (`--sitemap`): index/urlset, namespace-aware, filtrado por robots, cap. |
 | `server.py` | FastAPI + uvicorn: `gscrape serve`, single warm `AsyncWebCrawler`, `POST /scrape`, cache fast-path, `--token`. Binds 127.0.0.1. |
 | `structured.py` | P2: entidades estructuradas (JSON-LD → microdata → meta/OG → heurística), fail-open, campo `structured` + triage en `summary`/CSV. |
+| `parse.py` | Extracción por selectores CSS (`--parse 'titulo=h1'`, listas con `[]`), fail-open, campo `parsed`. Equivalente local de Context.dev `parse`. |
+| `highlights.py` | Pasajes relevantes a un query (`--query` + `--max-highlights`), scoring local por tokens, campo `highlights`. Equivalente local de Context.dev `highlights` (sin LLM). |
+| `documents.py` | PDF/DOCX/XLSX/PPTX a `text` con un GET polite (robots, cap 20 MB). Campo `document` + `pageType: document`. El crawl sigue saltando binarios; el scrape directo sí los lee. |
+| `pagemeta.py` | Inventario barato sin red: `links` [{url, text}] e `imagesInfo` [{url, alt, width, height}] desde el HTML crudo. Dimensiones reales vía Pillow cuando hay `--export-images`. |
+| `maincontent.py` | Columna principal readability-lite (`--main-content`): quita sidebars/comments/related y puntúa contenedores por densidad de texto. Fail-open. |
 | `meta.py` | Idioma (ISO 639-1, heurística sin deps, fail-open) + metadata rica (`meta`: canonical, OG, twitter, author, publishedAt, favicon) |
 | `screenshot.py` | Screenshot full-page CLI-only (`--screenshots DIR`), campo `screenshots` con rutas |
 | `waitcontent.py` | Espera acotada (poll de `innerText`, cap `consent_wait_ms`) tras dismiss de consent → contenido gated de SPAs capturado completo. Fail-open. |
 | `iframes.py` | Reporta iframes (`frames`) + fetch polite del `src` (`frameTexts`): robots-respecting, concurrency 3, timeout 5s, truncado 2000, fail-open por frame |
-| `utils.py` | `build_headers` — headers polite (UA honesto + `X-Crawl4AI-Untouched`) para fetches extra |
+| `utils.py` | `build_headers` — headers polite (UA honesto + `X-Crawl4AI-Untouched`) para fetches extra. Honra `extra_headers` y `accept_language` opt-in. |
+| `content controls` | `--exclude-selectors` (remueve nodos antes de texto/parse), `--no-links` (quita URLs markdown), `--wait-for` (ms o selector CSS para SPAs), `--header`/`--accept-language`. Todo opt-in; defaults intactos. |
+| `nav filter` | `NAV_CONTAINER_SELECTORS` (config): landmarks + tokens nav/menu. Se aplica a extractores (classify+listing sobre copia filtrada, profile sobre soup completo para no perder h1) y a `links`. NUNCA toca `text`. Verificado live: Stripe 555→75 li. |
+| `producto` | `structured.py` distingue `Product` + `SoftwareApplication` (brand, sku, mpn/gtin, availability, price, variants de offers[]) de perfiles; `reconcile_page_type` mapea a `pageType: product`. Microdata product también. |
+| `items dedupe` | `extract_items` colapsa duplicados exactos (title, href); variantes con distinto href se conservan (matrices de planes SaaS repiten filas por tier). |
+| `items quality` | Se saltan controles UI sin destino de 1 palabra ("Expand") y estados transitorios de widgets ("Generating...", "loading" en bloques <120 chars). Verificado live: Twilio AI finder, Slack. |
+| `data-uri strip` | `_strip_data_images`: las imágenes inline `data:` (iconos SVG de Asana) se reducen a su alt en `text`. Siempre activo. |
+| `degraded flag` | `record.degraded` + `summary.degraded` + columna CSV cuando el body trae marcadores de fallback ("browser not supported"... solo primeros 3000 chars). Airtable sirve su fallback con HTTP 200 a headless (verificado live). |
+| `cache TTL` | `--max-age 24h/7d/30m` (server: `maxAgeMs`): el cache de records caduca; default 0 = eterno (comportamiento anterior). |
 
 `tests/` corre contra un **fixture server local** (`fixtureserver.py`), no
 necesita internet. `scripts/` tiene los 5 escenarios + `fixture-check.sh`.
@@ -280,6 +293,16 @@ necesita internet. `scripts/` tiene los 5 escenarios + `fixture-check.sh`.
   queda del lado del consumidor.
 
 ## Pendiente / limitaciones conocidas
+
+- **Texto de menús div en `text`**: el filtro nav limpia `items`/`links`, pero el
+  markdown de `text` sigue incluyendo mega-menús cuando viven fuera de `<nav>`
+  (Stripe/Slack, verificado live sep-2026). Mitigación de usuario:
+  `--exclude-selectors` o `--main-content`. No se filtra por defecto para no
+  arriesgar el formato markdown (lección D13).
+- **Bullets de pricing como `items`**: tras el filtro nav, las listas de
+  features de tarjetas de pricing clasifican como `listing` (contenido real,
+  valor bajo). Sin regla genérica segura para distinguirlas de listados
+  reales — documentado, no perseguido.
 
 - **Banners de consent en iframes cross-origin**: no se pueden tocar desde el
   frame principal. Fase 4 captura su texto vía GET polite (`frameTexts`), pero
